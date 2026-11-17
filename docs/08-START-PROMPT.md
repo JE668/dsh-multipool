@@ -52,7 +52,7 @@
 
 - **不编造数值。** 限流/端点/错误码/响应头只能来自 `docs/02-CONSTRAINTS.md`；那里没的写 `unknown`，**不许**填「大概 40」「通常是 20」。尤其：NIM 的 40 必须标 `source:'user'` 并附「官方 Reference 未逐字给出」注；SenseNova **没有**任何 RPM/TPM 数值，不许引入。
 - **来源随值走。** 每个进入准入判断或 UI 的数值都带 `source`（`api`/`doc`/`doc-local`/`learned`/`user`/`assume`/`unknown`），UI 必须可见。
-- **冲突并排。** 同字段两个来源不一致时两个都显示并标来源；唯一例外是 `catalog/limits.json` 的 `resolvedConflicts` 里已有人工裁定（当前有 1 条：SenseNova 6.8 上下文 = 262144）。
+- **冲突并排。** 同字段两个来源不一致时两个都显示并标来源；唯一例外是 `catalog/limits.json` 的 `resolvedConflicts` 里已有人工裁定（当前有 2 条，都是 SenseNova 6.8 的上下文 = 262144：sensenova-6.8-flash 与 sensenova-6.8-flash-lite）。
 - **上游 `Retry-After` 优先。** 本地限流只决定「发之前等多久」；已收到的 `Retry-After` 不得被缩短、不得被本地启发式覆盖。AMD 官方原话是「不要自己设定间隔」，我们只加抖动，不加长也不缩短。
 - **宁可少发一条，不发一条注定 429 的；宁可 UI 缺一个数，不显示编出来的数。** 缺数据一律 `—` / `(上游未提供)`，**不是 0**、不是 `$0`、不加货币符号；`unknown` 不进图表、不参与聚合、不可排序。
 - **不做 OAuth / 网页登录态。** 只支持用户粘贴的 API Key，Key 存 DSH 插件 settings 命名空间，日志/导出/错误上报全部脱敏。
