@@ -5,11 +5,17 @@
     "amd": {
       "displayName": "AMD Radeon Cloud (Token Factory)",
       "baseUrl": "https://developer.amd.com.cn/radeon/api/v1",
-      "altBaseUrlPrefixes": ["/api"],
+      "altBaseUrlPrefixes": [
+        "/api"
+      ],
       "baseUrlMutable": false,
       "keyPrefix": "rc-",
-      "rejectedKeyPrefixes": ["sk-"],
-      "rejectedHosts": ["jupyter.anruicloud.com"],
+      "rejectedKeyPrefixes": [
+        "sk-"
+      ],
+      "rejectedHosts": [
+        "jupyter.anruicloud.com"
+      ],
       "endpoints": {
         "chat": "/v1/chat/completions",
         "messages": "/v1/messages",
@@ -18,35 +24,95 @@
         "utilization": "/v1/models/utilization",
         "usage": "/v1/usage"
       },
-      "sharedWindowEndpoints": ["/v1/chat/completions", "/v1/audio/speech", "/v1/systemone"],
+      "sharedWindowEndpoints": [
+        "/v1/chat/completions",
+        "/v1/audio/speech",
+        "/v1/systemone"
+      ],
       "limits": {
-        "rpmKey": { "value": 30, "source": "doc", "note": "每 API Key；平台准入层" },
-        "concurrencyKey": { "value": 8, "source": "doc", "note": "每 API Key 并发；平台准入层硬帽。调度器本地取 6 = 8 × 0.75" },
-        "concurrencyKeyAdmit": { "value": 6, "source": "assume", "note": "8 × 0.75 保守系数，可在设置中拉到 8" },
+        "rpmKey": {
+          "value": 30,
+          "source": "doc",
+          "note": "每 API Key；平台准入层"
+        },
+        "concurrencyKey": {
+          "value": 8,
+          "source": "doc",
+          "note": "每 API Key 并发；平台准入层硬帽。调度器本地取 6 = 8 × 0.75"
+        },
+        "concurrencyKeyAdmit": {
+          "value": 6,
+          "source": "assume",
+          "note": "8 × 0.75 保守系数，可在设置中拉到 8"
+        },
         "rpmIp": {
           "value": 120,
           "source": "doc",
           "note": "仅在边缘节点能提供可信客户端地址时生效；条件性，不得当作必然存在"
         },
-        "rpmAccount": { "value": 20, "source": "doc", "note": "网关计量层；60 秒滑动窗口；账号级只能配合响应头 X-RateLimit-Limit-User-RPM 使用" },
-        "dailyQuotaPts": { "value": null, "source": "unknown", "note": "每账号不同，运行时由 /v1/usage 的 daily_cost_limit_usd 给出（字段名带 usd，单位是 pts）" },
-        "rpmWindowMs": { "value": 60000, "source": "doc" },
-        "dailyReset": { "value": "00:00+08:00", "source": "doc", "note": "北京时间自然日；实现以 daily_reset_at 字段为准" },
-        "conservativeFactor": { "value": 0.85, "source": "assume", "note": "本地准入 = 上游上限 × 0.85" },
-        "assumedExternalClients": { "value": 1.5, "source": "assume", "note": "假设约 33% 流量来自插件之外；确认只有 DSH 用该账号时改 1" },
+        "rpmAccount": {
+          "value": 20,
+          "source": "doc",
+          "note": "网关计量层；60 秒滑动窗口；账号级只能配合响应头 X-RateLimit-Limit-User-RPM 使用"
+        },
+        "dailyQuotaPts": {
+          "value": null,
+          "source": "unknown",
+          "note": "每账号不同，运行时由 /v1/usage 的 daily_cost_limit_usd 给出（字段名带 usd，单位是 pts）"
+        },
+        "rpmWindowMs": {
+          "value": 60000,
+          "source": "doc"
+        },
+        "dailyReset": {
+          "value": "00:00+08:00",
+          "source": "doc",
+          "note": "北京时间自然日；实现以 daily_reset_at 字段为准"
+        },
+        "conservativeFactor": {
+          "value": 0.85,
+          "source": "assume",
+          "note": "本地准入 = 上游上限 × 0.85"
+        },
+        "assumedExternalClients": {
+          "value": 1.5,
+          "source": "assume",
+          "note": "假设约 33% 流量来自插件之外；确认只有 DSH 用该账号时改 1"
+        },
         "migrationBias": {
           "value": 3.0,
           "source": "doc",
           "note": "依据官方定价表 input_cache_read 0.0000000028 ÷ prompt 0.00000014 = 1/50；缓存命中省 98% 输入侧成本"
         },
-        "maxAttempts": { "value": 3, "source": "doc", "note": "04 §5.1；超出向 DSH 返回包装后的 429" },
-        "jitterRetryAfter": { "value": 0.15, "source": "doc", "note": "有 Retry-After 时 wait = RT × (1 + U(0, jitter))" },
-        "backoffNoHeader": {
-          "baseMs": { "value": 60000, "source": "doc" },
-          "capMs": { "value": 300000, "source": "doc" },
-          "jitter": { "value": 0.3, "source": "doc" }
+        "maxAttempts": {
+          "value": 3,
+          "source": "doc",
+          "note": "04 §5.1；超出向 DSH 返回包装后的 429"
         },
-        "defaultRetryAfter51103Ms": { "value": 5000, "source": "doc", "note": "503 'Model gateway is busy' 的默认 Retry-After" }
+        "jitterRetryAfter": {
+          "value": 0.15,
+          "source": "doc",
+          "note": "有 Retry-After 时 wait = RT × (1 + U(0, jitter))"
+        },
+        "backoffNoHeader": {
+          "baseMs": {
+            "value": 60000,
+            "source": "doc"
+          },
+          "capMs": {
+            "value": 300000,
+            "source": "doc"
+          },
+          "jitter": {
+            "value": 0.3,
+            "source": "doc"
+          }
+        },
+        "defaultRetryAfter51103Ms": {
+          "value": 5000,
+          "source": "doc",
+          "note": "503 'Model gateway is busy' 的默认 Retry-After"
+        }
       },
       "usageEndpoint": "/v1/usage",
       "usageRefreshMinMs": 60000,
@@ -54,29 +120,55 @@
       "modelRefreshDefaultMs": 600000,
       "modelsEndpointCountsAgainstRpm": true,
       "modelsEndpointCountsAgainstConcurrency": false,
-      "usageEndpointCountsAgainstRpm": { "value": true, "source": "assume", "note": "官方未说明 /v1/usage 是否计 RPM → 按计入保守处理" },
+      "usageEndpointCountsAgainstRpm": {
+        "value": true,
+        "source": "assume",
+        "note": "官方未说明 /v1/usage 是否计 RPM → 按计入保守处理"
+      },
       "modelsSharedAcrossKeys": true,
-      "retentionDays": { "events": 30, "rollup": "long" }
+      "retentionDays": {
+        "events": 30,
+        "rollup": "long"
+      }
     },
     "nim": {
       "displayName": "NVIDIA NIM",
       "baseUrl": "https://integrate.api.nvidia.com/v1",
       "baseUrlMutable": false,
       "keyPrefix": null,
-      "endpoints": { "chat": "/v1/chat/completions", "models": "/v1/models" },
+      "endpoints": {
+        "chat": "/v1/chat/completions",
+        "models": "/v1/models"
+      },
       "limits": {
         "rpm": {
           "value": 40,
           "source": "user",
           "note": "官方 Reference 未逐字给出该数字；用户确认「确定，大概率也是唯一限制」"
         },
-        "concurrency": { "value": 6, "source": "assume", "note": "假设值，无官方来源" },
-        "admitRpm": { "value": 34, "source": "assume", "note": "40 × 0.85 保守系数" },
-        "tpm": { "value": null, "source": "unknown", "note": "不做 TPM 维度" }
+        "concurrency": {
+          "value": 6,
+          "source": "assume",
+          "note": "假设值，无官方来源"
+        },
+        "admitRpm": {
+          "value": 34,
+          "source": "assume",
+          "note": "40 × 0.85 保守系数"
+        },
+        "tpm": {
+          "value": null,
+          "source": "unknown",
+          "note": "不做 TPM 维度"
+        }
       },
       "usageEndpoint": null,
       "usageEndpointReason": "no-endpoint",
-      "modelsEndpointIsPublic": { "value": true, "source": "doc", "note": "无鉴权也 200，但不得用作配额探针" },
+      "modelsEndpointIsPublic": {
+        "value": true,
+        "source": "doc",
+        "note": "无鉴权也 200，但不得用作配额探针"
+      },
       "crossKeyMigrationOn429": false
     },
     "sensenova": {
@@ -84,21 +176,65 @@
       "baseUrl": "https://token.sensenova.cn/v1",
       "baseUrlMutable": false,
       "keyPrefixHint": "sk-",
-      "endpoints": { "chat": "/v1/chat/completions", "messages": "/v1/messages", "responses": "/v1/responses", "models": "/v1/models" },
+      "endpoints": {
+        "chat": "/v1/chat/completions",
+        "messages": "/v1/messages",
+        "responses": "/v1/responses",
+        "models": "/v1/models"
+      },
       "limits": {
-        "rpm": { "value": null, "source": "unknown", "note": "三份一手资料全文 0 命中；不得引入任何 RPM/TPM 数值" },
-        "tpm": { "value": null, "source": "unknown" },
-        "qps": { "value": null, "source": "unknown" },
-        "retryAfter": { "value": null, "source": "unknown", "note": "文档未给出该头" }
+        "rpm": {
+          "value": null,
+          "source": "unknown",
+          "note": "三份一手资料全文 0 命中；不得引入任何 RPM/TPM 数值"
+        },
+        "tpm": {
+          "value": null,
+          "source": "unknown"
+        },
+        "qps": {
+          "value": null,
+          "source": "unknown"
+        },
+        "retryAfter": {
+          "value": null,
+          "source": "unknown",
+          "note": "文档未给出该头"
+        }
       },
       "quotaPools": [
-        { "name": "通用积分池", "window5h": 120000, "windowWeek": 1200000, "source": "doc-local", "ref": "SenseNova-API-文档整理.md" }
+        {
+          "name": "通用积分池",
+          "window5h": 120000,
+          "windowWeek": 1200000,
+          "source": "doc-local",
+          "ref": "SenseNova-API-文档整理.md"
+        }
       ],
-      "admitRpm": { "value": 3, "source": "assume", "note": "初始保守；运行后按 429 率 AIMD 调整" },
-      "admitRpmHardCap": { "value": 30, "source": "assume", "note": "升速封顶，非上游限额" },
-      "backoff": { "startMs": 30000, "maxMs": 300000, "decelerateFactor": 0.5 },
-      "slowdownCooldownMs": { "value": 300000, "source": "assume", "note": "降速冷却期；第 2 次连续 429 翻倍" },
-      "migrateAfterConsecutive429": { "value": 3, "source": "assume" },
+      "admitRpm": {
+        "value": 3,
+        "source": "assume",
+        "note": "初始保守；运行后按 429 率 AIMD 调整"
+      },
+      "admitRpmHardCap": {
+        "value": 30,
+        "source": "assume",
+        "note": "升速封顶，非上游限额"
+      },
+      "backoff": {
+        "startMs": 30000,
+        "maxMs": 300000,
+        "decelerateFactor": 0.5
+      },
+      "slowdownCooldownMs": {
+        "value": 300000,
+        "source": "assume",
+        "note": "降速冷却期；第 2 次连续 429 翻倍"
+      },
+      "migrateAfterConsecutive429": {
+        "value": 3,
+        "source": "assume"
+      },
       "usageEndpoint": null,
       "usageEndpointReason": "no-endpoint",
       "quotaUnknownPrompt": "如需确认请到控制台页核对"
@@ -108,15 +244,46 @@
       "baseUrl": "https://apihub.agnes-ai.com/v1",
       "baseUrlMutable": false,
       "keyPrefixHint": "sk-",
-      "endpoints": { "chat": "/v1/chat/completions", "models": "/v1/models" },
-      "planTier": { "value": "free", "source": "user", "ref": "2026-11-17 用户确认在用免费档" },
-      "tiers": { "free": { "textRpm": { "value": 20, "source": "doc" } } },
-      "limits": {
-        "rpm": { "value": 20, "source": "doc", "note": "tiers.free.textRpm；付费档未配置时为 unknown" },
-        "admitRpm": { "value": 17, "source": "assume", "note": "20 × 0.85" },
-        "concurrency": { "value": 8, "source": "assume", "note": "假设值，无官方来源" }
+      "endpoints": {
+        "chat": "/v1/chat/completions",
+        "models": "/v1/models"
       },
-      "creditsPerUsd": { "value": 6600, "source": "doc-local", "ref": "Agnes-Provider-Model-配置速查.md", "note": "UI 旁必须带 ≈ 与（待校准）" },
+      "planTier": {
+        "value": "free",
+        "source": "user",
+        "ref": "2026-11-17 用户确认在用免费档"
+      },
+      "tiers": {
+        "free": {
+          "textRpm": {
+            "value": 20,
+            "source": "doc"
+          }
+        }
+      },
+      "limits": {
+        "rpm": {
+          "value": 20,
+          "source": "doc",
+          "note": "tiers.free.textRpm；付费档未配置时为 unknown"
+        },
+        "admitRpm": {
+          "value": 17,
+          "source": "assume",
+          "note": "20 × 0.85"
+        },
+        "concurrency": {
+          "value": 8,
+          "source": "assume",
+          "note": "假设值，无官方来源"
+        }
+      },
+      "creditsPerUsd": {
+        "value": 6600,
+        "source": "doc-local",
+        "ref": "Agnes-Provider-Model-配置速查.md",
+        "note": "UI 旁必须带 ≈ 与（待校准）"
+      },
       "usageEndpoint": null,
       "usageEndpointReason": "no-endpoint"
     }
@@ -130,7 +297,11 @@
       "chosenBy": "user",
       "at": "2026-11-17",
       "rejected": [
-        { "value": 1048576, "source": "doc-local", "ref": "SenseNova-Provider-Model-配置速查.md（模型参数表）" }
+        {
+          "value": 1048576,
+          "source": "doc-local",
+          "ref": "SenseNova-Provider-Model-配置速查.md（模型参数表）"
+        }
       ],
       "note": "用户确认两个 6.8 模型上下文均为 256K；表格中的 1M 判为笔误，不采用"
     },
@@ -141,7 +312,13 @@
       "chosen": 262144,
       "chosenBy": "user",
       "at": "2026-11-17",
-      "rejected": [{ "value": 1048576, "source": "doc-local", "ref": "同上" }],
+      "rejected": [
+        {
+          "value": 1048576,
+          "source": "doc-local",
+          "ref": "同上"
+        }
+      ],
       "note": "同 6.8-flash；api 返回 1048576 时仍以本裁定为准，冲突进 conflicts 保留原值"
     }
   ]
