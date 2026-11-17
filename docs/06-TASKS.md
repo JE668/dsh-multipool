@@ -58,9 +58,9 @@
 - `fetchUsage()`：GET `/v1/usage?include_recent=true`。
 - 字段 `rpm_limit` **是 Key 级 30 不是账号级 20**（02 §1.6 明确写了）→ 写入 account 时**不得**用它当账号 RPM。
 - `daily_cost_limit_usd` 等**名字带 usd 但单位是 pts**（02 §1.6 原文）→ 类型里叫 `dailyLimitPts`，UI 文案「pts」。
-- **官方没有承诺这个端点不计 RPM**（02 §8 教训）→ 巡检间隔默认 **5 分钟**、最低 60s、与 Chat 共用预算计算。
-- 502/超时 ⇒ `unknown`，保留上次值与 `fetchedAt`，**不得置 0**（02 §8 教训）。
-- `daily_reset_at` 以东八区解析；`daily_reset_timezone` 非 `Asia/Shanghai` 时 UI Must 提示「以账号时区为准」。
+- **官方没有承诺这个端点不计 RPM**（04 §8 教训）→ 巡检间隔默认 **5 分钟**、最低 60s、与 Chat 共用预算计算。
+- 502/超时 ⇒ `unknown`，保留上次值与 `fetchedAt`，**不得置 0**（04 §8 教训）。
+- `daily_reset_at` 以东八区解析；`daily_reset_timezone` 非 `Asia/Shanghai` 时 UI 必须提示「以账号时区为准」。
 - **DoD**：离线 fixture + 真实 Key 双跑；故意 502 时 UI 显示「未知（时间戳）」。
 - **验收**：A-12、A-13、A-14
 
@@ -254,3 +254,12 @@ T-6-* ─ T-7-*
 ## 一句话优先级
 
 **T-0-b → T-1-b/c/e/f/g/h → T-2-b → T-3-a/b**：先到「AMD 单家、左栏图标能看到真实 rpm 与 pts、看板能出两条曲线」。其余都往后排。
+
+---
+
+### T-1-i 账号汇总诊断（只读，不参与调度）
+
+- **背景**：04 §2.4 的结论是「一个 AMD 账号下挂 N 把 Key，账号级 20 RPM 仍然是 20 RPM，不会变成 N 乘以 20」。设置页因此要让用户能自己核对：当前假设的总容量与上游实际口径是否一致。
+- **做法**：设置页 AMD 组提供「账号汇总诊断」按钮（只读），不做任何限流决策。点一次只发 1 个最小请求（`max_tokens: 1`），读响应头 `X-RateLimit-Limit-User-RPM` 与 `X-RateLimit-Remaining-User-RPM`（02 §1.5）。
+- **展示**：上游 Limit 与本地假设（Key 数乘 30）并排；上游 Limit 明显小于本地假设时提示「疑似同一账号多把 Key，建议把 20 RPM 在账号间均分」，并给出手动改 `accountRpm` 的入口。诊断请求计入 RPM 预算、不豁免；60 秒内最多点 1 次；结果 UI 标 `[probe]` 与时间戳。
+- **DoD**：不改 Key 状态、不改任何预算字段；无响应头时提示「上游未返回该头」而不是报错；诊断结果只进 UI 与事件流，不参与准入。

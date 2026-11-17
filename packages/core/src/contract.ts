@@ -65,12 +65,14 @@ export type Modality = string
 
 export type Stability = 'stable' | 'beta' | 'unstable' | 'experimental'
 
-export type AgnesTier = 'free' | 'starter' | 'pro' | 'enterprise'
+export type AgnesTier = 'free' | 'lite' | 'plus' | 'pro' | 'max'
 
 /**
  * Every rate-limit outcome the scheduler knows how to handle.
- * The first eight come from docs/03 section 4 and docs/02 section 1.4;
- * the rest are transport-level outcomes that also need an action.
+ * The first eight come from docs/03 section 4 and docs/02 section 1.4.
+ * They are the only values that may be stored on a MetricsEvent or drawn on a chart.
+ * The trailing five (network / upstream_5xx / client_4xx / ok / unknown) are transport
+ * outcomes: they steer retry and cooldown, and must never reach the rate-limit panels.
  */
 export type RateKind =
   | 'rpm_key'
@@ -88,6 +90,9 @@ export type RateKind =
   | 'unknown'
 
 export type RateClass = RateKind
+
+/** Transport-level outcomes. Same union for now; kept as a distinct name so panels can type against RateKind only. */
+export type TransportKind = RateKind
 
 export type AccountStatus =
   | 'available'

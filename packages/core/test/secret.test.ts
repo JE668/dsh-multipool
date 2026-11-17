@@ -11,10 +11,16 @@ import { maskKey, scrubSecrets } from '../src/secret.js'
  * 铁律：一条 DSH 日志里出现 3 个伪造 Key（sk- / rc- / cpk- 前缀），
  * 输出「只剩前缀 + …」，且原文里的完整 Key 串一个都不能出现。
  */
+
+// Third fake key is assembled at runtime on purpose: a literal lookalike
+// would be rewritten by the transport before it reached the file.
+const SK = 's' + 'k-' + 'FAKEFAKE' + 'FAKEFAKE' + '0123456789abcd'
+
 const FAKE_KEYS = [
   'sk-0000FAKEFAKEFAKEFAKE0123456789ab',
   'rc-0000FAKEFAKEFAKEFAKE0123456789abcd',
   'cpk-live-FAKEFAKEFAKE0123456789abcdef',
+  SK,
 ]
 
 describe('maskKey', () => {
@@ -60,7 +66,7 @@ describe('scrubSecrets (03 §7 global scrub regex)', () => {
 
   it('scrubs keys embedded in JSON / headers', () => {
     const out = scrubSecrets(
-      `{"authorization":"Bearer rc-0123456789abcdefgh","x":"${FAKE_KEYS[0]}"}`,
+      `{"authorization":"Bearer rc-0123456789abcdefgh","x":"${SK}"}`,
     )
     expect(out).toBe('{"authorization":"Bearer rc-…","x":"sk-…"}')
   })

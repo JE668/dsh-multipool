@@ -150,7 +150,7 @@
 
 ### N-11 6.8 上下文冲突保留 `[T-4-c]`
 **Given** `/v1/models` 返回 `sensenova-6.8-flash.context_length=1048576`（若不是此值，用例自动转为断言「与 `resolvedConflicts` 的 262144 冲突时进 `conflicts`」）。
-**Then** `conflicts[field='contextLength']` 存在且含两值；UI 并排显示 `262144 (user裁定)` 与 API 值；派生逻辑用 **262144**。
+**Then** `conflicts[field='contextLength']` 存在且含两值；UI 并排显示 `262144 (user 裁定)` 与 API 值；派生逻辑用 **262144**。
 
 ---
 

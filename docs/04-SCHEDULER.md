@@ -263,12 +263,12 @@ DSH 插件 Host 侧可能只有一个进程，但用户会**多开 DSH 窗口/�
 | 以为 `/v1/usage` 不消耗 RPM | 第三方 README 转述 | 高频轮询反而造 429 | **官方文档没说它不计**。默认 5 分钟轮询、手动刷新、不因看板刷新调（03 §8） |
 | 把 NIM 的 `40 RPM` 当官方文档值 | 搜到第三方教程 | 若 NIM 实际不是 40，启动就撞墙 | 用户亲口确认作 `configuredRpm`；官方页抓取结果**支持不了该数字**，作为「否定性结论」保留并不复盘 |
 | 认为 SenseNova 有 RPM 数值 | 以为公开文档必有 | 做「前验预算」必定穿帮 | 三份资料全文 0 命中；改为 `rate_opaque` 降速方案，禁用 RPM 预判 |
-| 认为 `quota_exceeded_error` 可以细分 | 名字暗示分开 | 把「速率」误当「额度」冷却 24h | 同一个 code，不可区分 → 降速为主、迁移为辅（§这部分） |
+| 认为 `quota_exceeded_error` 可以细分 | 名字暗示分开 | 把「速率」误当「额度」冷却 24h | 同一个 code，不可区分 → 降速为主、迁移为辅（§6；docs/02 §3.4） |
 | 以为所有 Provider 都有 usage 端点 | 通用假设 | SenseNova/NIM 一直显示「未知」看着像 bug | 无端点即显式 `no-endpoint`，UI 文案写清楚 |
 | 以为模型对象都长 OpenAI 样子 | 常识惯性 | 读 `object`/`owned_by`/`created` 全是 undefined | AMD 字段表逐字写进 02 §1.5；NIM/SenseNova/Agnes 各写各的解析器 |
 | 只看 `code` 判 429 | 贪快 | AMD 平台层 code 在 `detail` 里，网关层 code 相同 | 只看 `status` + `Retry-After`，code 仅归类 |
 | 假设所有供应商都返回 `Retry-After` | 天真 | SenseNova 没写、Agnes 没写 → 退避无依据 | 有则用、无则本地曲线 |
-| 假设跨 Provider 迁移是安全的 | 想省事 | 供应商为难「同请求秒现多户」整池封禁 | 跨 Provider 默认关闭 |
+| 假设跨 Provider 迁移是安全的 | 想省事 | 供应商可能把同一请求在极短时间内出现在多个账户视为整池异常 | 跨 Provider 默认关闭 |
 | 把 `65.5K` 当 65500 | 想当然 | 实际可能是 65536 或 67072 | `ambiguous=true`，原文保留 |
 | 把敏感矩阵 `pre-alpha` 当稳定模型 | 贪新 | 预览版随时下线/改名 | `comingSoon`/`unknown` 显式标注（02 §5） |
 

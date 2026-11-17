@@ -1,5 +1,5 @@
 /**
- * Retry-After 解析（docs/02 §1.缴4、docs/04 §5.2；docs/07 U-01）
+ * Retry-After 解析（docs/02 §1.5、docs/04 §5.2；docs/07 U-01）
  *
  * RFC 9110 允许两种形态：
  *   Retry-After: 120                  → delta-seconds
@@ -29,7 +29,7 @@ export function parseRetryAfter(
     return Number.isSafeInteger(seconds) ? seconds * 1000 : null
   }
 
- const at = Date.parse(text)
+  const at = Date.parse(text)
   if (Number.isNaN(at)) return null
   return Math.max(0, at - nowMs)
 }

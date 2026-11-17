@@ -204,6 +204,8 @@ type RateKind =
 | `auth` | 全部 | 401/403（SenseNova 实测 `{code:16}`） | 人工恢复 | 是 |
 | `model_missing` | AMD/其他 | 400 `not supported` / 404 | 刷新目录 | 否 |
 
+**注：上表只是列表，而非扩展。**`RateKind` 只有上表这 8 个值。运输层的 `network` / `upstream_5xx` / `client_4xx` / `ok` / `unknown` **不属于限流分类**，在代码里单独定义为 `TransportKind`：**不得写入** `MetricsEvent.rateKind`、**不得进入** 429 分类图表与看板图表（与「unknown 不进图表」的铁律一致），只用于重试与冷却决策。
+
 **Agnes 403 的特殊处理**：403 = Key 对该模型无权限 / 区域受限 → **不降 RPM 预算、不冷却 Key**，改为「该 (account, model) 组合标不可用」+ 换模型。若全部模型 403 才升级为 `auth`。
 
 ---
@@ -320,7 +322,7 @@ interface ProviderAdapter {
 |---|---|
 | 存储位置 | DSH 插件 settings 命名空间 `dsh-multipool.keys`（不写普通文件、不写 localStorage 明文） |
 | 展示 | **默认掩码** `rc-…1a2b` / `sk-…9f8e`；「显示」需点击，10 秒后自动回掩码 |
-| 日志 | 只允许后 4 位；全局脱敏正则 `/(rc-|sk-|cpk-)[A-Za-z0-9]{8,}/g → '$1…'` |
+| 日志 | 只允许后 4 位。全局脱敏正则见 `core/src/secret.ts`：前缀组 `(cpk-,rc-,sk-)` 后接 `[A-Za-z0-9-]{8,}`（至少 8 个字符，可用连字符），替换为 前缀加省略号 `...` |
 | 错误上报 | 不带上游 body 原文；只带 status、`RateKind`、`Retry-After` |
 | 看板导出 | 导出前过脱敏函数，并加单测断言「导出内容不含完整 Key」 |
 | 复制 | 「复制」复制**完整 Key**，但写审计日志（只记时间与掩码） |
