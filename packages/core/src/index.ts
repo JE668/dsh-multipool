@@ -1,4 +1,10 @@
-export { isDecimalString, normalizeDecimal, estimateCost } from './decimal.js'
+export {
+  isDecimalString,
+  normalizeDecimal,
+  estimateCost,
+  mulDecimalByInt,
+  mulDecimalTruncated,
+} from './decimal.js'
 export { parseRetryAfter } from './retry-after.js'
 export { parseEpochish } from './epochish.js'
 export { parseTokenCount, type TokenCount } from './token-count.js'

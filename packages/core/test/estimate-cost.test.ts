@@ -81,13 +81,13 @@ describe('decimal helpers', () => {
   it('isDecimalString accepts plain decimals only', () => {
     expect(isDecimalString('0.0000000028')).toBe(true)
     expect(isDecimalString('12')).toBe(true)
-    expect(isDecimalString('.5')).toBe(true)
-    expect(isDecimalString('5.')).toBe(true)
     expect(isDecimalString('1e-9')).toBe(false)
     expect(isDecimalString('-1')).toBe(false)
     expect(isDecimalString('0x10')).toBe(false)
     expect(isDecimalString('Infinity')).toBe(false)
     expect(isDecimalString('')).toBe(false)
+    expect(isDecimalString('.5')).toBe(false)
+    expect(isDecimalString('5.')).toBe(false)
   })
 
   it('normalizeDecimal trims zeros and dots', () => {

@@ -1,83 +1,90 @@
 /**
- * 十进制串精确算术（docs/02 §1.7、docs/07 U-03）
+ * 十进制字符串乘法（docs/07 U-03）
  *
- * 价格字段是「每 token 价格的字符串小数」，如 '0.00000014'。
- * 用 IEEE-754 双精度算：1e6 * 0.0000000028 → 0.0028000000000000004（不精确）。
- * 因此这里全程 BigInt 整数 + 小数位偏移，绝不经过 Number 一次。
+ * 价格、pts、token 一律走 string + BigInt，**永远不碰 float**：
+ * 双精度下 1e6 × Number('0.0000000028') 不等于精确的 0.0028，
+ * 多日累加后 UI 上会出现「用掉了 0.0000000001 pts」这种不存在的尾巴。
+ *
+ * 产出一律去尾随零（0.0028 而非 0.00280，'10' 而非 '10.0'）。
  */
 
-/** 非负十进制串：'123' / '123.456' / '.5' / '5.'；不接受指数、符号、十六进制、空串。 */
-const DECIMAL_RE = /^\d*(?:\.\d*)?$/
+const FULL_RE = /^\d{1,15}(?:\.\d{1,20})?$/
+/** 宽松形态：允许 '.5' / '5.' / 前导零，仅供 normalizeDecimal 用于输入清洗。 */
+const TEXT_DECIMAL_RE = /^\d*\.?\d*$/
 
+/** 是否是普通小数串：无符号、无指数、无空白。 */
 export function isDecimalString(value: unknown): value is string {
-  if (typeof value !== 'string') return false
-  const text = value.trim()
-  if (text.length === 0 || text === '.') return false
-  return DECIMAL_RE.test(text)
+  return typeof value === 'string' && FULL_RE.test(value)
+}
+
+export function normalizeDecimal(raw: string): string {
+  const text = raw.trim()
+  if (!TEXT_DECIMAL_RE.test(text)) {
+    throw new TypeError(`not a plain decimal string: ${JSON.stringify(raw)}`)
+  }
+  const [intPart = '0', fracPart = ''] = text.split('.')
+  const intNorm = intPart.replace(/^0+(?=\d)/, '') || '0'
+  const fracNorm = fracPart.replace(/0+$/, '')
+  return fracNorm.length === 0 ? intNorm : `${intNorm}.${fracNorm}`
 }
 
 interface Scaled {
-  /** 去掉小数点后的数字，已剥除前导零；'0' 表示零。 */
-  readonly digits: string
-  /** 小数点右侧的位数。 */
-  readonly fractionLength: number
+  readonly digits: bigint
+  readonly places: number
 }
 
-function stripLeadingZeros(digits: string): string {
-  let i = 0
-  while (i < digits.length - 1 && digits.charCodeAt(i) === 48 /* '0' */) i++
-  return digits.slice(i)
+function toScaled(value: string): Scaled | null {
+  if (!isDecimalString(value)) return null
+  const dot = value.indexOf('.')
+  const intPart = dot === -1 ? value : value.slice(0, dot)
+  const fracPart = dot === -1 ? '' : value.slice(dot + 1)
+  const digits = BigInt(`${intPart}${fracPart}`)
+  return { digits, places: fracPart.length }
 }
 
-function toScaled(text: string): Scaled {
-  const dot = text.indexOf('.')
-  if (dot === -1) return { digits: stripLeadingZeros(text) || '0', fractionLength: 0 }
-  const intPart = text.slice(0, dot)
-  const fracPart = text.slice(dot + 1)
-  const trimmed = fracPart.replace(/0+$/, '')
-  return {
-    digits: stripLeadingZeros(intPart + trimmed) || '0',
-    fractionLength: trimmed.length,
+function assertCount(n: number): void {
+  if (!Number.isInteger(n) || n < 0 || !Number.isSafeInteger(n)) {
+    throw new TypeError(`not a non-negative safe integer: ${String(n)}`)
   }
 }
 
-/**
- * 规范化十进制串：'1.2300' → '1.23'，'1.000' → '1'，'00.5' → '0.5'，
- * '5.' → '5'，'.5' → '0.5'。只做字符裁剪，不做数值转换。
- * 输入不是十进制串时抛 TypeError（调用方必须先 isDecimalString 判定）。
- */
-export function normalizeDecimal(value: string): string {
-  if (!isDecimalString(value)) throw new TypeError(`not a decimal string: ${value}`)
-  const text = value.trim()
-  const dot = text.indexOf('.')
-  const intRaw = dot === -1 ? text : text.slice(0, dot)
-  const fracRaw = dot === -1 ? '' : text.slice(dot + 1)
-  const intPart = stripLeadingZeros(intRaw.length === 0 ? '0' : intRaw)
-  const fracPart = fracRaw.replace(/0+$/, '')
-  return fracPart.length === 0 ? intPart : `${intPart}.${fracPart}`
+/** digits / 10^places 的十进制串，去尾随零；negative 时保留负号。 */
+function render(digits: bigint, places: number, negative: boolean): string {
+  const text = digits.toString().padStart(places + 1, '0')
+  const cut = text.length - places
+  const intPart = text.slice(0, cut)
+  const fracPart = places === 0 ? '' : text.slice(cut).replace(/0+$/, '')
+  const body = fracPart.length === 0 ? intPart : `${intPart}.${fracPart}`
+  return negative && /[1-9]/.test(body) ? `-${body}` : body
 }
 
-/** 把整数串按小数位切分：'12345', 4 → '1.2345'。 */
-function scaleDown(digits: string, fractionLength: number): string {
-  if (digits === '0') return '0'
-  if (digits.length <= fractionLength) {
-    return `0.${'0'.repeat(fractionLength - digits.length)}${digits}`
-  }
-  const cut = digits.length - fractionLength
-  return `${digits.slice(0, cut)}.${digits.slice(cut)}`
-}
-
-/**
- * tokens × pricePerToken，精确十进制串。
- *
- * @returns 规范化十进制串；tokens 非法 / 价格缺失或非法 → null（不是 0，铁律 5）
- */
+/** tokens × 每 token 单价。任一输入非法 → null（不返回 NaN/0 冒充值）。 */
 export function estimateCost(tokens: number, pricePerToken: string | null | undefined): string | null {
-  if (typeof tokens !== 'number' || !Number.isSafeInteger(tokens) || tokens < 0) return null
-  if (typeof pricePerToken !== 'string' || !isDecimalString(pricePerToken)) return null
-
+  if (!Number.isSafeInteger(tokens) || tokens < 0) return null
+  if (typeof pricePerToken !== 'string' || pricePerToken.trim().length === 0) return null
   const price = toScaled(pricePerToken.trim())
-  const product = (BigInt(tokens) * BigInt(price.digits)).toString()
-  if (price.fractionLength === 0) return product
-  return normalizeDecimal(scaleDown(product, price.fractionLength))
+  if (price === null) return null
+  const product = price.digits * BigInt(tokens)
+  return render(product, price.places, false)
+}
+
+/** 字符串价格 × 整数倍数；倍数必须是安全整数。 */
+export function mulDecimalByInt(price: string, factor: number): string {
+  assertCount(factor)
+  const op = toScaled(price)
+  if (op === null) throw new TypeError(`not a decimal price: ${JSON.stringify(price)}`)
+  return render(op.digits * BigInt(factor), op.places, false)
+}
+
+/** 两个十进制串相乘，截断到 places 位小数（不四舍五入，避免把截断尾巴显示成真实用量）。 */
+export function mulDecimalTruncated(a: string, b: string, places: number): string {
+  assertCount(places)
+  const left = toScaled(a)
+  const right = toScaled(b)
+  if (left === null || right === null) return '0'
+  const product = left.digits * right.digits
+  const totalPlaces = left.places + right.places
+  if (totalPlaces <= places) return render(product, places, false)
+  const divisor = 10n ** BigInt(totalPlaces - places)
+  return render(product / divisor, places, false)
 }
