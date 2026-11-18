@@ -70,3 +70,22 @@ export {
   retryAfterMsOf,
   type AmdDiagnostic,
 } from './amd-error.js'
+
+export {
+  CATALOG_REFRESH_MS,
+  fetchCatalog,
+  normalizeModel,
+  normalizeModels,
+  parseCatalogResponse,
+  resetCatalogCache,
+  setCatalogTransport,
+  type FetchLike as CatalogFetchLike,
+} from './amd-catalog.js'
+export {
+  USAGE_POLL_DEFAULT_MS,
+  USAGE_POLL_FLOOR_MS,
+  fetchAmdUsage,
+  parseUsageResponse,
+  setUsageTransport,
+  type UsagePollState,
+} from './amd-usage.js'
