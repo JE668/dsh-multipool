@@ -303,7 +303,7 @@ NIM / SenseNova 的额度字段为 `unknown` → HTML 文本断言出现 `—` �
 **Given** 上游 `name` 为 `models/gemini-3.8-flash`。
 **Then** `NormalizedModel.id === 'gemini-3.8-flash'`（无前缀）。
 **And** 用该模型发一次对话时，发给上游的 `model` 字段**带**回 `models/` 前缀（原生端点）——
-即"UI 不带、请求时补"的转换只发生在适配器内部（`03 §3.6`、`02 §7.6`）。
+即"UI 不带、请求时补"的转换只发生在适配器内部（`03 §3.3`、`02 §7.6`）。
 
 ### H-06 缺字段不猜
 **Given** 某条目**没有** `inputTokenLimit`，**没有** `outputTokenLimit`，也没有 `supportedGenerationMethods`。
