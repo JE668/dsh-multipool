@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { estimateCost, isDecimalString, normalizeDecimal } from '../src/decimal.js'
+import { estimateCost, isDecimalString, mulDecimalByInt, mulDecimalTruncated, normalizeDecimal } from '../src/decimal.js'
 
+const EMPTY = new Array(0).join(String.fromCharCode(0))
 /**
  * U-03 estimateCost — 十进制串精确计算（docs/07-ACCEPTANCE.md U-03, docs/02 §1.6/§1.7）
  *
@@ -96,5 +97,48 @@ describe('decimal helpers', () => {
     expect(normalizeDecimal('00.5')).toBe('0.5')
     expect(normalizeDecimal('.5')).toBe('0.5')
     expect(normalizeDecimal('5.')).toBe('5')
+  })
+
+  // 铁律 5：缺数据不是 0。截断乘法遇到不可解析输入必须回 null，让调用方决定怎么显示。
+  it('mulDecimalTruncated returns null, never 0, for unparsable input', () => {
+    expect(mulDecimalTruncated('abc', '2', 4)).toBeNull()
+    expect(mulDecimalTruncated('nah', 'git', 4)).toBeNull()
+    expect(mulDecimalTruncated('1.5', '1e-9', 4)).toBeNull()
+    expect(mulDecimalTruncated('abc', '2', 4)).not.toBe('0')
+  })
+
+  // 倍数是 token 数：必须是安全整数，负数 / 小数 / 超安全范围都直接抛。
+  it('assertCount rejects negative, fractional and unsafe factors', () => {
+    expect(() => mulDecimalByInt('0.1', -1)).toThrow(TypeError)
+    expect(() => mulDecimalByInt('0.1', 1.5)).toThrow(TypeError)
+    expect(() => mulDecimalByInt('0.1', Number.MAX_SAFE_INTEGER + 1)).toThrow(TypeError)
+  })
+
+  it('mulDecimalTruncated truncates instead of rounding', () => {
+    expect(mulDecimalTruncated('0.0000002', '1.5', 7)).toBe('0.0000003')
+    expect(mulDecimalTruncated('1.23456', '1.x', 2)).toBeNull()
+    expect(mulDecimalTruncated('1234.5678', '1', 2)).toBe('1234.56')
+  })
+
+  // 输入清洗口径：允许 .5 / 5. / 前导零 / 尾随零（上游价格串常带），
+  // 指数、符号、十六进制、空串一律拒绝 —— 进 float 才会算出不存在的尾巴。
+  it('normalizeDecimal accepts loose plain decimals and rejects everything else', () => {
+    expect(normalizeDecimal(' .5 ')).toBe('0.5')
+    expect(normalizeDecimal('5.')).toBe('5')
+    expect(normalizeDecimal('00120.5000')).toBe('120.5')
+    expect(normalizeDecimal('0')).toBe('0')
+    expect(() => normalizeDecimal('1e-9')).toThrow(TypeError)
+    expect(() => normalizeDecimal('-0.1')).toThrow(TypeError)
+    expect(() => normalizeDecimal('0x10')).toThrow(TypeError)
+    expect(() => normalizeDecimal(EMPTY + '..')).toThrow(TypeError)
+  })
+
+  // 价格串超长（整数 > 15 位 / 小数 > 20 位）视为上游没给：
+  // estimateCost 回 null，mulDecimalByInt 抛 TypeError，都不是 0。
+  it('rejects over-long price strings instead of truncating them', () => {
+    expect(estimateCost(1, '1234567890123456')).toBeNull()
+    expect(estimateCost(1, '0.123456789012345678901')).toBeNull()
+    expect(() => mulDecimalByInt('1234567890123456', 1)).toThrow(TypeError)
+    expect(() => mulDecimalByInt('0.123456789012345678901', 1)).toThrow(TypeError)
   })
 })

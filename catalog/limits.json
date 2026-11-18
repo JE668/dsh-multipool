@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "collectedAt": "2026-11-17T15:00:00+08:00",
+  "collectedAt": "2026-11-18T12:45:00+08:00",
   "providers": {
     "amd": {
       "displayName": "AMD Radeon Cloud (Token Factory)",
@@ -286,6 +286,513 @@
       },
       "usageEndpoint": null,
       "usageEndpointReason": "no-endpoint"
+    },
+    "google": {
+      "displayName": "Google Gemini (Generative Language API)",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "openaiCompatBaseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "baseUrlMutable": false,
+      "keyPrefix": "AIza",
+      "keyPrefixNote": "真实 Key 以 AIza 开头，紧跟 35 位 base64url 正文（约 39 字符），中间没有横线；官方示例写 AIza-<GOOGLE_KEY>，那个 - 只是占位连接符，按 AIza- 匹配会把真实 Key 判成非法",
+      "auth": {
+        "rest": "x-goog-api-key",
+        "openaiCompat": "Authorization: Bearer",
+        "queryParamForbidden": "?key= 查询串鉴权：官方建议走头，查询串会留在日志、代理、referer 里"
+      },
+      "endpoints": {
+        "chat": "/v1beta/openai/chat/completions",
+        "models": "/v1beta/models",
+        "openaiCompatModels": "/v1beta/openai/models",
+        "interactions": "/v1beta/interactions",
+        "generateContent": "/v1beta/models/{model}:generateContent",
+        "streamGenerateContent": "/v1beta/models/{model}:streamGenerateContent?alt=sse"
+      },
+      "modelIdShape": {
+        "value": "models/<id>",
+        "source": "doc-local",
+        "note": "原生端点与 /v1beta/models 的 name 都带 models/ 前缀；OpenAI 兼容端点的 model 不带前缀。两条路径规则相反，前缀拼接/剥离只能在适配器内部（stripModelsPrefix / addModelsPrefix），UI 与调度器不碰"
+      },
+      "planTier": {
+        "value": "free",
+        "source": "user",
+        "note": "用户当前在 Google 侧是 Free 档"
+      },
+      "limits": {
+        "rpm": {
+          "value": null,
+          "source": "unknown",
+          "note": "按模型取值，见 freeTier.modelLimits；不设 Provider 级单一 RPM"
+        },
+        "tpm": {
+          "value": null,
+          "source": "unknown",
+          "note": "按模型取值，见 freeTier.modelLimits"
+        },
+        "rpd": {
+          "value": null,
+          "source": "unknown",
+          "note": "按模型取值，见 freeTier.modelLimits"
+        },
+        "concurrency": {
+          "value": null,
+          "source": "unknown",
+          "note": "官方文档未给出并发上限；不填假设值，调度器不设本地并发帽"
+        },
+        "admitRpm": {
+          "value": null,
+          "source": "unknown",
+          "note": "按模型取值，见 freeTier.modelLimits[*].admitRpm"
+        },
+        "dailyQuota": {
+          "value": null,
+          "source": "unknown",
+          "note": "按模型取值，见 freeTier.modelLimits[*].rpd"
+        },
+        "peakHours": {
+          "value": null,
+          "source": "unknown",
+          "note": "文档未说明是否有高峰降速；插件不加强制削峰"
+        },
+        "conserveEstimate": {
+          "value": true,
+          "source": "doc-local",
+          "note": "TPM 按估算计费：请求发出时估算，通常低于实际值，命中缓存更便宜"
+        }
+      },
+      "quotaTimezone": "America/Los_Angeles",
+      "quotaTimezoneNote": "Google 每日配额（RPD）在太平洋时间零点重置，与 AMD 的 Asia/Shanghai 不同；UI 倒计时必须按本字段算",
+      "freeTier": {
+        "source": "doc-local",
+        "modelLimits": {
+          "models/gemini-4-hydrogen": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx",
+            "note": "1M ctx；RPD 20 只够偶尔切过去的短问"
+          },
+          "models/gemini-3.8-flash": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.6-flash": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3-flash": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-2.5-flash": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.5-flash-lite": {
+            "rpm": {
+              "value": 15,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 500,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 12,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.1-flash-lite": {
+            "rpm": {
+              "value": 15,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 500,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 12,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-2.5-flash-lite": {
+            "rpm": {
+              "value": 10,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 8,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-2.5-flash-tts": {
+            "rpm": {
+              "value": 3,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 10000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 10,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 2,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.1-flash-tts": {
+            "rpm": {
+              "value": 3,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 10000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 10,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 2,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.8-flash-tts": {
+            "rpm": {
+              "value": 3,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 10000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 10,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 2,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-3.8-flash-lite-tts": {
+            "rpm": {
+              "value": 3,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 10000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 10,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 2,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/antigravity-preview-09-2026": {
+            "rpm": {
+              "value": 60,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 100000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 100,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 51,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-decision-1": {
+            "rpm": {
+              "value": 200,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 50000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 10000,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 170,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-embedding-001": {
+            "rpm": {
+              "value": 100,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 30000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 1000,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 85,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-embedding-2": {
+            "rpm": {
+              "value": 100,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 30000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 1000,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 85,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemma-4-26b": {
+            "rpm": {
+              "value": 30,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 16000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 14400,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 25,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemma-4-31b": {
+            "rpm": {
+              "value": 30,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 16000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 14400,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 25,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          },
+          "models/gemini-robotics-er-2-preview": {
+            "rpm": {
+              "value": 5,
+              "source": "doc-local"
+            },
+            "tpm": {
+              "value": 250000,
+              "source": "doc-local"
+            },
+            "rpd": {
+              "value": 20,
+              "source": "doc-local"
+            },
+            "admitRpm": {
+              "value": 4,
+              "source": "assume"
+            },
+            "ref": "Google-Provider-Model-配置速查.md / Google ai API 文档.docx"
+          }
+        },
+        "liveModelLimits": {
+          "models/gemini-2.5-flash-native-audio-dialog": {
+            "value": 1000000,
+            "source": "doc-local"
+          },
+          "models/gemini-3-flash-live": {
+            "value": 65000,
+            "source": "doc-local"
+          },
+          "models/gemini-3.5-live-translate": {
+            "value": 20000,
+            "source": "doc-local"
+          },
+          "models/gemini-3.5-transcribe-live": {
+            "value": 20000,
+            "source": "doc-local"
+          },
+          "models/gemini-3.8-live": {
+            "value": 65000,
+            "source": "doc-local"
+          },
+          "models/gemini-3.8-live-extended-thinking": {
+            "value": 65000,
+            "source": "doc-local"
+          }
+        },
+        "noFreeTier": [
+          "gemini-4-argon",
+          "gemini-4-carbon",
+          "gemini-3.1-pro",
+          "gemini-2.5-pro",
+          "gemini-2-flash",
+          "gemini-2-flash-lite",
+          "nano-banana",
+          "lyria",
+          "omni",
+          "deep-research",
+          "computer-use"
+        ],
+        "note": "noFreeTier 里的模型在 Free 档直接 429 RESOURCE_EXHAUSTED，与本插件本地限流无关；UI 必须把两者分成两条 429 显示"
+      },
+      "liveTierNote": "Live 类模型 RPM/RPD 无限制，只有 TPM 帽；429 只能由 TPM 触发，面板必须把 TPM 放首位",
+      "paidTier": {
+        "source": "unknown",
+        "rpm": {
+          "value": null,
+          "source": "unknown"
+        },
+        "tpm": {
+          "value": null,
+          "source": "unknown"
+        },
+        "rpd": {
+          "value": null,
+          "source": "unknown"
+        },
+        "note": "付费层逐模型 RPM/TPM/RPD 未在用户资料中出现；不得按 Free 档比例推断"
+      },
+      "usageEndpoint": null,
+      "usageEndpointReason": "no-endpoint",
+      "usageEndpointNote": "Google 没有可查询今日已用 RPM/TPM/RPD 的 API；配额只能靠本地计数、响应头与 429 学习；UI 额度区必须显式写「上游未提供用量端点」，不得显示 0",
+      "modelRefreshDefaultMs": 600000,
+      "retentionDays": {
+        "events": 30,
+        "rollup": "long"
+      }
     }
   },
   "resolvedConflicts": [

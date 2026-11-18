@@ -32,7 +32,7 @@ const cmd = argv[0]
 
 if (cmd === 'check') {
   if (argv.length !== 3) {
-    console.log('0')
+    // usage error: say nothing on stdout, so `out=$(...)` cannot be mistaken for a mismatch
     process.exit(2)
   }
   const file = argv[1]

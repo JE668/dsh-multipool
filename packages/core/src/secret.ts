@@ -4,12 +4,12 @@
  * 铁律：插件写出的任何日志 / 导出文件 / 错误报告里都不允许出现完整 Key。
  * 一次清洗要同时做两件事——
  *   1. maskKey: 已知前缀的 Key → `<prefix>…<last4>`，用于 UI 回显；
- *   2. scrubSecrets: 任意文本 → 把所有 (rc-|sk-|cpk-)[A-Za-z0-9]{8,} 压成 `<prefix>…`，
+ *   2. scrubSecrets: 任意文本 → 把所有 (cpk-|rc-|sk-|nvapi-|AIza)[A-Za-z0-9_-]{8,} 压成 `<prefix>…`，
  *      用于日志与错误串。两者都必须在**写出去之前**调用，不能事后补。
  */
 
-const SECRET_PATTERN = /(cpk-|rc-|sk-)[A-Za-z0-9-]{8,}/g
-const KNOWN_PREFIXES = ['cpk-', 'rc-', 'sk-'] as const
+const SECRET_PATTERN = /(cpk-|rc-|sk-|nvapi-|AIza)[A-Za-z0-9_-]{8,}/g
+const KNOWN_PREFIXES = ['cpk-', 'rc-', 'sk-', 'nvapi-', 'AIza'] as const
 
 /** 缺失值统一占位：不是 0、不是 ""、不是掩码后的 Key（03 §3.2）。 */
 export const UNKNOWN_PLACEHOLDER = '(上游未提供)'

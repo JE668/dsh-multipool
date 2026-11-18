@@ -72,7 +72,7 @@
 
 ### T-1-f 主动闸 + 粘性路由 + 熔断 `dep: T-1-e`
 - 照 04 §2/§3/§4 实现：滑动窗口预算、`stickyPick`、`leastLoad`、`shouldMigrate`（AMD `MIGRATION_BIAS=3.0`）、熔断。
-- 预算 = `min(accountRpm20, keyRpm30) × 0.85 ÷ assumedExternalClients(1.5)`，且被 `X-RateLimit-Remaining-User-RPM` 校准取小（04 §2.2/§6.2）。
+- 预算 = `min(accountRpm20, keyRpm30) × 0.85 ÷ assumedExternalClients(1.5)`，且被 `X-RateLimit-Remaining-User-RPM` 校准取小（04 §2.2/§6.4）。
 - **DoD**：04 §9 的 S-01 ~ S-08 全绿（假时钟注入，不打真网）。
 - **验收**：S 系列
 
@@ -138,7 +138,7 @@
 ### T-3-e 沉浸模式 `shell.overlay`
 - 注册但**默认不挂载**；设置开关 `dashboardMode`。
 - Esc 关闭；打开时不改变 DSH 其它状态；关闭后可回到原 panel。
-- **验收**：U-08 ~ U-11
+- **验收**：Z-06（卸载干净）、U-08（折线断裂不误解为 0）
 
 ---
 
@@ -191,12 +191,12 @@
 - **429 ⇒ RPM/并发**，冷却 60s±（04 §5.2）；`message` 只能辅助，不能据此判额度。
 - **403 ⇒ 该 (account, model) 不可用**，不降 RPM、不冷 Key；全模型 403 才升 `auth`。
 - 可选的 5h / 周请求数计数器（仅当设置里填了套餐配额）：对 Starter 1500/5h、15000/周；Pro 30000/5h、300000/周（02 §4.3）。
-- **creditsPerUsd=6600** 作为**假设**（03 §6 / 02 §4.7），UI 上标「假设/待校准」，人民币计提 ÷6600；美元照标价。
+- **creditsPerUsd=6600** 作为**假设**（03 §6 / 02 §4.6），UI 上标「假设/待校准」，人民币计提 ÷6600；美元照标价。
 - **验收**：G-01 ~ G-06
 
 ### T-5-c 四 Provider 统一配置页
 - 设置面板每组统一字段布局（05 §5.1）。
-- 「预算自检」覆盖四家各自的官方硬帽。
+- 「预算自检」覆盖五家各自的官方硬帽。
 
 ---
 
@@ -209,6 +209,8 @@
 - 默认 `crossProviderFailover=false`；开启需二次确认。
 - 开启后会话粘性键 `(sessionId, providerId, accountAlias)`；迁移优先同 Provider 内，**全部不可用**才跨 Provider。
 - 任何跨 Provider 迁移写迁移事件（UI 可见）。
+- **DoD**：Z-04 的压测脚本在这一阶段真正落地——跑完输出 `migrations_total` 与 `migrations_unnecessary`，后者必须为 0（每次迁移都能在事件流里追到唯一原因：账号 429 `daily_quota`、日额度耗尽、或全 Provider 不可用）；`crossProviderFailover=false` 时 `migrations_cross` 必须为 0。
+- **验收**：Z-04
 
 ### T-6-c 会话内提示（D6）
 - 额度耗尽 / 全冷却 / 本地 503 ⇒ 往当前会话插系统提示；同类 10 分钟内最多 1 条。
@@ -221,7 +223,7 @@
 - `packages/core` 行覆盖 ≥ 85%，分支 ≥ 80%；解析器 fixture 全覆盖。
 
 ### T-7-b 真机联调脚本
-- `scripts/smoke.ts`：四家各 1 Key，跑「拉模型 → 1 次对话 → 拉用量（有端点者）→ 打印结果摘要（脱敏）」。
+- `scripts/smoke.ts`：五家各 1 Key，跑「拉模型 → 1 次对话 → 拉用量（有端点者）→ 打印结果摘要（脱敏）」。
 - 无 Key 时打印 `skipped`，不失败。
 
 ### T-7-c README + 截图
@@ -247,6 +249,8 @@ T-1-b ─ T-4-a ─┬─ T-4-b
 T-4-a ─ T-5-a ─ T-5-b ─ T-5-c
 T-2-a ─ T-6-a ; T-5-c 后 ─ T-6-b ; T-6-b 后 ─ T-6-c
 T-6-* ─ T-7-*
+T-7-* ─ T-8-a ─┼─ T-8-b
+             └─ T-8-c ─ T-8-d ─ T-8-e
 ```
 
 ---
@@ -263,3 +267,124 @@ T-6-* ─ T-7-*
 - **做法**：设置页 AMD 组提供「账号汇总诊断」按钮（只读），不做任何限流决策。点一次只发 1 个最小请求（`max_tokens: 1`），读响应头 `X-RateLimit-Limit-User-RPM` 与 `X-RateLimit-Remaining-User-RPM`（02 §1.5）。
 - **展示**：上游 Limit 与本地假设（Key 数乘 30）并排；上游 Limit 明显小于本地假设时提示「疑似同一账号多把 Key，建议把 20 RPM 在账号间均分」，并给出手动改 `accountRpm` 的入口。诊断请求计入 RPM 预算、不豁免；60 秒内最多点 1 次；结果 UI 标 `[probe]` 与时间戳。
 - **DoD**：不改 Key 状态、不改任何预算字段；无响应头时提示「上游未返回该头」而不是报错；诊断结果只进 UI 与事件流，不参与准入。
+
+
+## 阶段 8 · Google Gemini 适配器（第五家，可选开启）
+
+> 定位：**默认关闭**。Google 与另外四家有两个结构性差异，必须在实现前记住：
+>
+> 1. **限流是按模型给的**（`02 §7.4`），没有账号级 RPM。所以 Google 的 `Account.limits.rpmAccount` 恒为
+>    `null`，闸 1（Provider 预算闸）在 Google 上按 `(providerId, modelId)` 组桶，不按账号。
+> 2. **免费层 RPD 很小**（多数文本模型 20 次/天）。所以 Google 更多是「补充短问」而不是「主力长跑」，
+>    这一点要写进设置页说明，避免用户配了 Key 却发现半小时就用完。
+
+### T-8-a Google 适配器 + 错误映射 `dep: T-1-b`  `验收: H-01 ~ H-03`
+
+- Base：REST `https://generativelanguage.googleapis.com/v1beta`，OpenAI 兼容 `.../v1beta/openai`（02 §7.1）。
+- 鉴权：REST 走 **`x-goog-api-key` 头**，兼容端点走 `Authorization: Bearer`。
+  **禁止** `?key=` 查询串（02 §7.1，会进日志/代理/referer）。
+- 只接 **OpenAI 兼容端点**（02 §7.3）；`generateContent` / `:streamGenerateContent` / `interactions`
+  只做目录展示，**不转发**。
+- `classify()` 映射：
+  - `429` + body 含 `RESOURCE_EXHAUSTED` ⇒ `rpm_key` 或 `daily_quota`（按 `QuotaFailure` 的 `quotaId` 区分，
+    见 T-8-c）；
+  - `429` 但 quotaId 是**模型级免费层额度**（`generate_content_free_tier_requests_per_day`）⇒
+    `daily_quota`，冷却到**太平洋时间零点**（`quotaTimezone: 'America/Los_Angeles'`，02 §7.4），
+    **不要**照抄 AMD 的 `Asia/Shanghai`；
+  - `404 NOT_FOUND` ⇒ `model_missing`（Google 用 404 表示模型不存在，而 AMD 用 400——**这是两家最容易复制错的点**）；
+  - `400 INVALID_ARGUMENT` ⇒ `client_4xx`，不重试；
+  - `403 PERMISSION_DENIED` / API 未启用 ⇒ `auth`，人工恢复，不自动重试；
+  - `429` 但无 `RetryInfo` ⇒ 退回本地指数退避（2s 起，60s 帽，抖动 ±20%）。
+- **DoD**：单测覆盖上表每一种；`classify` 遇到未知 body 归 `unknown` 且保留 `status + body[:2KB]`（Z-07）。
+- **验收**：H-01、H-02、H-03
+
+### T-8-b 模型目录（Google，结构与其他四家完全不同）`dep: T-8-a`  
+`验收: H-04 ~ H-06`
+
+- `GET /v1beta/models`（`x-goog-api-key` 头）。
+- 响应形状 `{ models: [{ name, displayName, version, description, inputTokenLimit, outputTokenLimit,
+  supportedGenerationMethods, supportedActions, ... }], nextPageToken }`——**注意**：
+  - 字段名是 `inputTokenLimit` / `outputTokenLimit`，**不是** `context_length` / `max_output_tokens`；
+  - `name` 形如 `models/gemini-3.8-flash`，**归一化时必须 strip `models/`**；
+    `NormalizedModel.id` 存**不带前缀**的裸 ID（与另外四家一致，UI 与调度器不能出现两种写法）；
+  - 分页走 `nextPageToken`，**必须翻完**（默认 50 条一页，62 个模型会漏）；
+- 映射：
+  - `id` ⇐ `name` strip `models/`
+  - `displayName` ⇐ `displayName`
+  - `contextLength` ⇐ `inputTokenLimit`（**注意**：这是输入上限，不是总上下文；opendoc 里没有「总上下文」字段，
+    所以 `NormalizedModel.contextLength` 用输入上限并在 `note` 里写清口径）
+  - `maxOutput` ⇐ `outputTokenLimit`
+  - `capabilities.tools/vision/reasoning` ⇐ 由 `supportedGenerationMethods` 与模型名后缀推导，推导不出来的
+    一律 `unknown`（**不许猜**）——02 §7.6 与 03 §3.2 的铁律
+  - `pricing` ⇐ **Google 的 `/v1beta/models` 不返回价格**，所以 `pricing` 一律 `null`
+    （UI 显示 `—`），不要拿 `02 §7` 的价目表去填 API 字段（那是 `doc-local`，不是 `api`）
+- **DoD**：喂一份 62 条的离线 fixture（含分页），断言 62 条全部落地、`models/` 前缀全被 strip、
+  `pricing` 全 `null`、`contextLength` 来自 `inputTokenLimit`；再喂一份缺 `inputTokenLimit` 的条目，
+  断言该模型 `contextLength` 为 `null` 而不是猜。
+- **验收**：H-04、H-05、H-06
+
+### T-8-c 429 的 quotaId 解析与「本地限流 vs 上游无额度」分开 `dep: T-8-a`  
+`验收: H-07 ~ H-09`
+
+Google 的 429 与 AMD 的**语义完全不同**，这是本项目最容易照搬错的地方：
+
+- AMD 的 `rate_limit_exceeded` 是**网关/平台在拦你**，我们在本地主动闸就是为了不撞它。
+- Google 的 `429 RESOURCE_EXHAUSTED` 有**两种**：
+  1. **速率类**（RPM/TPM 超了）——`QuotaFailure.violations[].quotaId` 里带
+     `generate_requests_per_minute` / `generate_content_per_minute` 之类 → 短冷却，且**是插件本地闸没拦住才发生**
+     的信号，应该记「本地闸失效」，用来回调 §4 的保守系数；
+  2. **配额类**（RPD 用完，或用户根本不在 Free 档里能用的模型）——`quotaId` 带 `per_day`；
+     或者 **模型本身无免费层**（`02 §7.rb` 的 `noFreeTier` 清单，如 `gemini-4-argon`、`gemini-3.1-pro`）
+     → 冷却到**太平洋时间次日零点**，UI 标「今日额度已尽」，并且**不要**降 `admitRpm`——
+     降了也没用，第二天额度照样只有 20。
+- `RetryInfo.retryDelay` 不一定存在（02 §7.5）：有就用它，没有就按上面两类各自的本地退避。
+- **DoD**：
+  - 两条假 429（一条带 `per_minute` quotaId、一条带 `per_day`）分类到不同 `RateKind`；
+  - `noFreeTier` 清单里的模型即使从没成功过，第一次 429 也直接判 `daily_quota`（因为它的额度必然为 0），
+    而不是判「未知，重试 3 次」；
+  - UI 两条 429 计数分开（`05 §3.2` 第 3 行、`05 § Actual6` 的 Google 行）。
+- **验收**：H-07、H-08、H-09
+
+### T-8-d Google 无用量端点处理 `dep: T-8-c`  `验收: H-10`
+
+- `fetchUsage()` 返回 `{ available: false, reason: 'no-endpoint' }`——Google **没有**「今天已用多少 RPM/TPM/RPD」
+  的接口（与 NIM 同类）。**禁止**尝试用 `/v1beta/models` 或 quota 页猜测。
+- 额度卡：上限来自 `02 §7.4` 表（`doc-local`），已用量来自本地计数（标 `本地推算`），
+  两者之间**永不**相减出一个「余额」再当作事实展示（余额 = 本地推算，误差不可见，容易被当成权威数字）。
+- **DoD**：`fetchUsage` 不被任何定时器调用（`FakeClock` 推进 10 分钟断言上游 0 次额度请求）；
+  额度卡上有 `本地推算` 与 `上游未提供用量接口` 两个字样。
+- **验收**：H-10
+
+### T-8-e Google 设置组 + 跨时区重置显示 `dep: T-8-d`  `验收: H-11 ~ H-12`
+
+- 设置页新增第 5 组「Google Gemini」，结构与其他四组一致（Key 列表、预算、目录刷新间隔、用量端点状态），
+  但**预算区只有「按模型」的表**，没有「账号 RPM」输入框——因为 Google 没有这一层（`02 §7.4`）。
+  这一点必须在 UI 上显式说明，否则用户会以为「输入框没显示 = 我没填对」。
+- 默认关闭：首次进入时该组折叠并显示 `未启用`，展开后显示一段说明
+  「Google 免费层按模型限速且 RPD 很小（多为 20 次/天），Google 的 Key 只做补充」。
+- **时区**：重置时刻按 `quotaTimezone: 'America/Los_Angeles'` 渲染，并在本地时间旁**同时**显示太平洋时间
+  （例如 `距重置 3h 12m（PT 00:00）`）。**禁止**套用 AMD 的「北京时间 00:00」文案——`05 §3.2` 只给 AMD 写死了
+  「00:00 重置」，Google 行不能照抄。
+- **DoD**：设置页第 5 组存在且默认折叠；GPU 实例服务域名（`jupyter.anruicloud.com`）式的鉴权防错**不适用**于 Google，
+  但 `AIza` 之外的前缀（尤其 `sk-`、`rc-`）要提示「这看起来不是 Google 的 Key」——同 `C-02` 的做法，新增 `H-12`。
+- **验收**：H-11、H-12
+
+---
+
+## 依赖图（本补丁追加）
+
+```
+T-1-b ─ T-8-a ─┬─ T-8-b
+               └─ T-8-c ─ T-8-d ─ T-8-e
+T-8-e 前置：T-5-c（统一配置页已有四组，第五组插在它后面）
+T-7-a / T-7-b / T-7-c 在 T-8-e 完成后重跑一次
+```
+
+---
+
+## 阶段 8 内部优先级
+
+**T-8-c（429 的 quotaId 分流）> T-8-b（60 条目录 + 分页 + strip 前缀）> T-8-a > T-8-d > T-8-e**。
+
+T-8-c 排第一，是因为「把 Google 的 429 当 AMD 的 429 处理」会让插件对一个**今天再也不会成功**的 Key 反复重试，
+直接浪费掉其他 Provider 的会话缓存上下文。

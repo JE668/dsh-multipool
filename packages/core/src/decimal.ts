@@ -77,11 +77,11 @@ export function mulDecimalByInt(price: string, factor: number): string {
 }
 
 /** 两个十进制串相乘，截断到 places 位小数（不四舍五入，避免把截断尾巴显示成真实用量）。 */
-export function mulDecimalTruncated(a: string, b: string, places: number): string {
+export function mulDecimalTruncated(a: string, b: string, places: number): string | null {
   assertCount(places)
   const left = toScaled(a)
   const right = toScaled(b)
-  if (left === null || right === null) return '0'
+  if (left === null || right === null) return null
   const product = left.digits * right.digits
   const totalPlaces = left.places + right.places
   if (totalPlaces <= places) return render(product, places, false)

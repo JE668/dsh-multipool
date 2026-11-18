@@ -8,9 +8,9 @@
  *      {value: null, source: 'unknown'}. Never 0, never '', never -1.
  */
 
-export type ProviderId = 'amd' | 'nim' | 'sensenova' | 'agnes'
+export type ProviderId = 'amd' | 'nim' | 'sensenova' | 'agnes' | 'google'
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['amd', 'nim', 'sensenova', 'agnes']
+export const PROVIDER_IDS: readonly ProviderId[] = ['amd', 'nim', 'sensenova', 'agnes', 'google']
 
 export type Source =
   | 'api'

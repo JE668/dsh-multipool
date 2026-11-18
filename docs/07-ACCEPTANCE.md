@@ -46,7 +46,7 @@
 **Then** 分类 `rpm_key`（账号级窗口）；冷却 = `60 × (1+U(0,0.15))`；**不**降 RPM 预算；**不**冷却 Key 到次日；UI 侧类别「网关 RPM」。
 
 ### A-06 日额度耗尽 `[T-1-b]`
-**Given** 网关层 429，message 含 `Daily usage limit exceeded: maximum $10 per period for this OneClick user.`，`Retry-After: 34200`。
+**Given** 网关层 429，message 含 `Daily usage limit exceeded: maximum $10 per period for this OneClick user.`（`$10` 为上游 message 原文，不是货币符号，UI 不得据此显示美元），`Retry-After: 34200`。
 **Then** 分类 `daily_quota`；账号状态 `quota_exhausted`；`coolUntil = now + 34200s`，且与 `/v1/usage` 的 `daily_reset_at` **对齐取较晚者**；触发会话迁移（04 §3.2）；UI 行标红「日额度耗尽 · 北京时间 00:00 重置」。
 
 ### A-07 IP 级限流全局生效 `[T-1-b/T-1-e]`
@@ -243,7 +243,7 @@ NIM / SenseNova 的额度字段为 `unknown` → HTML 文本断言出现 `—` �
 **Then** 红字：`这看起来不是 Token Factory 的 rc- Key（详见 02 §1.1）`；**不保存**。
 
 ### C-03 Base URL 只读 `[T-2-d]`
-断言四家 Base URL 输入框 `disabled`，仅可复制；不存在「自定义 baseURL」保存路径（防错配到实例服务路径，02 §1.2）。
+断言五家 Base URL 输入框 `disabled`，仅可复制；不存在「自定义 baseURL」保存路径（防错配到实例服务路径，02 §1.2）。
 
 ---
 
@@ -266,6 +266,108 @@ NIM / SenseNova 的额度字段为 `unknown` → HTML 文本断言出现 `—` �
 
 ---
 
+## H · Google Gemini（第五家，默认关闭）
+
+> 前置阅读：`02 §7`、`06 阶段 8`。Google 与另外四家的差异集中在三处：**限流按模型给**、
+> **429 的语义要按 quotaId 分流**、**没有用量端点**。下面每条都要求断言"插件向上游发了什么"，
+> 不是断言插件内部日志。
+
+### H-01 速率类 429（RPM 超限）
+**Given** FakeUpstream 对 `gemini-3.8-flash` 返回 429，body 为
+`{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel-FreeTier"}]}]}}`，
+无 `RetryInfo`。
+**Then** 分类为 `rpm_key`（不是 `daily_quota`）；冷却时长取官方退避（无 `Retry-After`、无 `RetryInfo` ⇒ 本地 2s 起指数退避，附抖动）；
+**During** 冷却期 Recorder 内该模型的请求数为 0，但**其他模型**不受影响（按模型分桶的直接证据）。
+**And** UI 记为「本地限流」，**不**降到「上游无额度」计数（05 §3.2 第 3 行、05 §6）。
+
+### H-02 配额类 429（RPD 耗尽）
+**Given** 同一个模型，429 body 的 `quotaId` 为 `GenerateRequestsPerDayPerProjectPerModel-FreeTier`。
+**Then** 分类为 `daily_quota`；`coolUntil` 落在**太平洋时间次日零点**（`quotaTimezone: 'America/Los_Angeles'`），
+而不是北京时间零点、也不是"现在 + 24h"。
+**And** `admitRpm` **不**因此下调（降到 1 也没用，次日额度照样只有 20 次）。
+**And** UI 的「上游无额度」计数 +1，与 H-01 的「本地限流」计数分开。
+
+### H-03 无免费层模型的 429
+**Given** 请求 `gemini-4-argon`（在 `02 §7.4` 的 `noFreeTier` 清单里），上游返回 429 `RESOURCE_EXHAUSTED`。
+**Then** 第一次就判 `daily_quota`（不试 3 次、不判"未知"）；**And** 该模型在 UI 上显 `Free 档不可用` 灰标，
+而不是"冷却中 12h"这类误导性倒计时。
+
+---
+
+### H-04 模型目录 62 条全部落地（含分页）
+**Given** 离线 fixture：`/v1beta/models` 分两页返回（`nextPageToken` 有值），共 62 条。
+**Then** `fetchModels` 后 `models.length === 62`；Recorder 里上游恰好收到 **2** 次目录请求（翻页了）；
+**And** 断言里**不**出现 `pageToken=\u0027\u0027` 这类"空 token 也请求一次"的多余请求。
+
+### H-05 `models/` 前缀归一化
+**Given** 上游 `name` 为 `models/gemini-3.8-flash`。
+**Then** `NormalizedModel.id === 'gemini-3.8-flash'`（无前缀）。
+**And** 用该模型发一次对话时，发给上游的 `model` 字段**带**回 `models/` 前缀（原生端点）——
+即"UI 不带、请求时补"的转换只发生在适配器内部（`03 §3.6`、`02 §7.6`）。
+
+### H-06 缺字段不猜
+**Given** 某条目**没有** `inputTokenLimit`，**没有** `outputTokenLimit`，也没有 `supportedGenerationMethods`。
+**Then** `NormalizedModel.contextLength === null`、`maxOutput === null`、`capabilities` 全 `unknown`；
+**And** UI 该行显 `—`，**不**显 `0`、**不**显任何推测值（铁律 5）。
+
+---
+
+### H-07 本地闸失效信号可观测
+**Given** 本地预算 `admitRpm = 4`（Free 档 5 RPM × 0.85），但固化住 3 个 429 `rpm_key`。
+**Then** 每个 `rpm_key` 事件带 `localGateFailed: true`；看板「本地闸失效」计数 +3；
+**And** 下次预算重算时 `admitRpm` 下调（不是上调）——这是"学到的教训"，不是"恶意探测"。
+
+### H-08 `RetryInfo.retryDelay` 优先于本地退避
+**Given** 429 body 额外带
+`{"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"7s"}]}`。
+**Then** 冷却时长取 `7s × (1 + 抖动)`（抖动仍为 ≥0、≤本项目的抖动上限），
+**不**取本地 `2s` 起指数退避的首次值。
+**And** 当 `retryDelay` 是超长值（如 `"3600s"`）时，**不**无条件照抄——超过
+`maxCooldownMs`（默认 5 分钟，配置项）则 clamp 到 `maxCooldownMs` 并在 UI 标「上游要求冷却 3600s，已限幅」，
+防止一个错误 body 把模型锁死一小时。
+
+### H-09 404 与 400 不得混为一谈
+**Given** 请求一个目录里没有的模型 ID。
+**Then** 上游 404 `NOT_FOUND` ⇒ 分类 `model_missing`：**不重试**、**不冷 Key**、把 404 原样回给调用方（不转成 429/503）；
+**Given** 同一次请求 `temperature` 传 `9`（超范围）⇒ 上游 400 `INVALID_ARGUMENT`。
+**Then** 分类 `client_4xx`：**不重试**、**不冷 Key**、原样返回。
+**And** 两档在事件里 `rateKind` 不同（H-09 断言里 `model_missing !== client_4xx`）。
+
+---
+
+### H-10 无用量端点：零额度请求 + 两张字样
+**Given** Google 已配 1 Key，`FakeClock` 推进 10 分钟（期间不发任何模型请求）。
+**Then** Recorder 内**额度类请求 0 次**——`/v1beta/models` 一次也**不**因为"想看额度"而被调；
+确认插件没有把模型列表当余额探针（`02 §6` 非目标第 3 条）。
+**And** 浮层 Google 卡片额度行同时含字样 `上游未提供用量接口` 与 `本地推算`；
+**And** 渲染文本里**不含**任何形如 `0 pts` / `0 次` 的"额度为零"表述（可用 `U` 系列零值扫描器复用）。
+
+---
+
+### H-11 设置页第 5 组默认折叠
+**Given** 首次打开设置页，Google 从未配置过。
+**Then** 「Google Gemini」组**默认折叠**，标题右侧显 `未启用`；组内**不**出现「账号级 RPM」输入框
+（因为 Google 无这一层：`02 §7.4`）；预算区只有「按模型」表，且表头有列说明「上限出自官方速率限制页（doc-local），
+已用量为本地推算」。
+**And** 其余四组（AMD / NIM / SenseNova / Agnes）的渲染不变（回归）。
+
+### H-12 非 AIza 前缀软提示 `[T-8-e]`
+**Given** 在 Google 组粘贴 `sk-` 或 `rc-` 开头的串。
+**Then** 显黄字提示「这看起来不是 Google 的 Key（应以 `AIza` 开头）」；
+**But** **不**拦截保存（与 `C-02` 区分：Google Key 前缀不是公开硬标准，不能因为提示错杀用户的合法 Key）。
+**And** 若粘贴的是 `jupyter.anruicloud.com` 这类 AMD 实例域名，则与它家一样**硬拦截**
+（那是 AMD 专属错误，不是"看起来不像"）。
+
+---
+
+### H-13 未知错误体不归错类 `[Z-07]`
+**Given** 429 但 body 是 HTML 错误页、或 429 但 body 为空、或 429 但 `details` 结构无法解析。
+**Then** 分类 `unknown`（**不是** `rpm_key`、**不是** `daily_quota`）；`raw` 字段保留 `status + body[:2KB]`；
+**And** 冷却策略走「不冷 Key、换下一个候选重试一次」的保守分支（04 §5.1），
+避免把一个非限流的 429 误判成"今日额度耗尽"而浪费其余四家的缓存。
+
+---
+
 ## Z · 构建 / 类型 / 边界
 
 ### Z-01 全仓构建
@@ -278,7 +380,7 @@ NIM / SenseNova 的额度字段为 `unknown` → HTML 文本断言出现 `—` �
 `grep -rn "Date.now()\|new Date()\|setTimeout(\|setInterval(" packages/` 只允许出现在 `packages/core/src/clock.ts`（可注入时钟的实现文件）。
 
 ### Z-04 迁移不必要性统计 `[T-6-b]`
-压测结束断言 `migrations_unnecessary === 0`（01 §7.2）；该项写入测试报告缓存。
+压测结束断言 `migrations_unnecessary === 0`（01 §7、§5）；该项写入测试报告缓存。
 
 ### Z-05 端口可配 `[T-1-g]`
 默认 18888；改端口需重启（`applies:'restart'` 生效）；其余设置热生效——单测断言「改 rpmAccount 无需重启即改变放行数」。

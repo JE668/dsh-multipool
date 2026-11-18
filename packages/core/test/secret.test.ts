@@ -5,7 +5,7 @@ import { maskKey, scrubSecrets } from '../src/secret.js'
  * U-04 maskKey / scrubSecrets（docs/03 §7, docs/02 §1.5, docs/07 U-04）
  *
  * maskKey(key)       -> `rc-…1a2b` 风格：保留已知前缀 + 最后 4 位
- * scrubSecrets(text) -> 日志/导出/错误报告里所有形如 (rc-|sk-|cpk-)[A-Za-z0-9]{8,} 的串
+ * scrubSecrets(text) -> 日志/导出/错误报告里所有形如 (cpk-|rc-|sk-|nvapi-|AIza)[A-Za-z0-9_-]{8,} 的串
  *                       替换成 `<prefix>…`，全文不再出现原始 Key。
  *
  * 铁律：一条 DSH 日志里出现 3 个伪造 Key（sk- / rc- / cpk- 前缀），
@@ -17,7 +17,7 @@ import { maskKey, scrubSecrets } from '../src/secret.js'
 const SK = 's' + 'k-' + 'FAKEFAKE' + 'FAKEFAKE' + '0123456789abcd'
 
 const FAKE_KEYS = [
-  'sk-0000FAKEFAKEFAKEFAKE0123456789ab',
+  'sk-FAKEFAKELOGKEYzzzz',
   'rc-0000FAKEFAKEFAKEFAKE0123456789abcd',
   'cpk-live-FAKEFAKEFAKE0123456789abcdef',
   SK,
@@ -28,6 +28,16 @@ describe('maskKey', () => {
     expect(maskKey('rc-abcdefgh1234')).toBe('rc-…1234')
     expect(maskKey('sk-abcdefgh9f8e')).toBe('sk-…9f8e')
     expect(maskKey('cpk-abcdefgh5678')).toBe('cpk-…5678')
+  })
+
+  // docs/02 section 2 / section 7: NIM issues nvapi- keys and Gemini issues AIza keys.
+  // Both shapes must be masked here, or docs/07 U-04 only covers 3 of the 5 providers.
+  it('masks nvapi- and AIza keys from the NVIDIA and Google pools', () => {
+    const nv = "nvapi-" + "NVIDIAFAKE0123456789abcd"
+    const g = "AIza" + "GOOGLEFAKE0123456789abcd"
+    expect(maskKey(nv)).toBe('nvapi-…abcd')
+    expect(maskKey(g)).toBe('AIza…abcd')
+    expect(scrubSecrets(nv + ' and ' + g)).toBe('nvapi-… and AIza…')
   })
 
   it('short keys collapse fully instead of leaking', () => {
@@ -88,3 +98,4 @@ describe('scrubSecrets (03 §7 global scrub regex)', () => {
     expect(scrubSecrets(once)).toBe(once)
   })
 })
+

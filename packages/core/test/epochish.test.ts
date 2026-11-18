@@ -48,3 +48,11 @@ describe('parseEpochish (B-03 reset-header normalisation)', () => {
     expect(parseEpochish(1730000123, now)).toBe(1_730_000_123_000)
   })
 })
+
+  // 上游把 Reset 写成空串 / 纯空白 / 非数字：一律 null，不回落成「等于现在」。
+  it('rejects empty, blank and non-numeric strings', () => {
+    expect(parseEpochish('', 1_000_000)).toBeNull()
+    expect(parseEpochish('   ', 1_000_000)).toBeNull()
+    expect(parseEpochish('soon', 1_000_000)).toBeNull()
+    expect(parseEpochish('12s', 1_000_000)).toBeNull()
+  })

@@ -89,6 +89,11 @@ export function createFakeClock(options: FakeClockOptions): FakeClock {
   let seq = 0
   const timers: PendingTimer[] = []
 
+  function intervalPeriod(raw: number): number {
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : 1
+  }
+
   function schedule(callback: () => void, delayMs: number, period: number): Disposable {
     const timer: PendingTimer = {
       dueMonotonic: mono + Math.max(0, delayMs),
@@ -146,7 +151,7 @@ export function createFakeClock(options: FakeClockOptions): FakeClock {
     now: () => wall,
     monotonic: () => mono,
     setTimeout: (callback, delayMs) => schedule(callback, Number(delayMs), 0),
-    setInterval: (callback, delayMs) => schedule(callback, Number(delayMs), Math.max(1, Number(delayMs))),
+    setInterval: (callback, delayMs) => schedule(callback, Number(delayMs), intervalPeriod(delayMs)),
     advance,
     disposeIntervals() {
       for (const t of timers) if (t.period > 0) t.disposed = true

@@ -54,3 +54,13 @@ describe('U-02 parseTokenCount', () => {
     expect(parseTokenCount(-1)).toBeNull()
   })
 })
+
+  // 布尔 / 空串 / 纯空白 / 非数字文本：上游没有给出，回 null，不伪装成 0。
+  it('returns null for boolean, empty, blank and junk text', () => {
+    expect(parseTokenCount(true)).toBeNull()
+    expect(parseTokenCount(false)).toBeNull()
+    expect(parseTokenCount('')).toBeNull()
+    expect(parseTokenCount('   ')).toBeNull()
+    expect(parseTokenCount('lots')).toBeNull()
+    expect(parseTokenCount('512KB')).toBeNull()
+  })

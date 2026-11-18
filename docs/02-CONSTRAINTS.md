@@ -373,7 +373,8 @@ agnes-video-2.5, agnes-video-2.5-flash
 | `[assume]` | 无出处、本项目给出的保守值 | ✅ **必须**标「假设/待校准」 | ⚠️ 仅作初始，必须可配 |
 
 任何数值**没有以上标签** → 禁止出现在代码、UI、文档中。
-```
+
+---
 
 ---
 
@@ -381,9 +382,111 @@ agnes-video-2.5, agnes-video-2.5-flash
 
 | 不做 | 原因 | 出处 |
 |---|---|---|
-| TPM 维度 | 四家官方文档都没有把 token 速率列为独立限流维度：AMD 只有 RPM / 并发 / 日 pts，NIM 只有 RPM，SenseNova 的 429 不可归因，Agnes 是 RPM 加 5h/周请求数 | 01-PRD §5 |
+| TPM 准入维度（不做底层 TPM 统计） | 四家官方文档都没有把 token 速率列为独立限流维度：AMD 只有 RPM / 并发 / 日 pts，NIM 只有 RPM，SenseNova 的 429 不可归因，Agnes 是 RPM 加 5h/周请求数。**Gemini 是例外**：官方速率限制页逐模型给出 TPM（且 Live 类模型只有 TPM），见 02 §7.4。但 TPM 仍**不**作为准入维度——插件不估 token 数，只把它当作「模型能吃多长」的展示信息，并用于避免发出必然 429 的超大请求。铁律 5 不变：不猜 token 数 | 01-PRD §5、02 §7.4 |
 | 主动探针 | 假请求同样计入 RPM 与积分；最小请求通过只代表请求数桶恢复，不代表大请求可用 | 01-PRD §5 |
 | 用模型列表当鉴权 / 余额检查 | NIM 无 Key 也 200，Agnes 无效 Key 也 200，AMD 计入 RPM，三条都测不出余额 | 01-PRD §5 |
 | 跨 Provider 自动迁移 | 默认关闭，仅显式开启；供应商可能把同一请求在极短时间内出现在多个账户视为异常 | 04 §3.4 |
 
 ---
+
+## 7. Google Gemini
+
+> 来源：用户 `Google-Provider-Model-配置速查.md`（11048 B）+ `Google ai API 文档.docx`（2026-10-25 快照），2026-11-18 并入。价格与速率限制均 `[doc-local]`——这两份是用户从官方页面复制下来的快照，不是可复访的官方 URL。
+
+### 7.1 接入 `[doc-local]`
+
+- Base URL（标准 / REST）：`https://generativelanguage.googleapis.com/v1beta`。**pinned，不可改**：这个域名与 `v1beta` 路径同时出现在官方 SDK 默认值和文档示例里，用户改了就必然 404。`catalog/limits.json` 里 `baseUrlMutable: false`。
+- Base URL（OpenAI 兼容）：`https://generativelanguage.googleapis.com/v1beta/openai`。路径结构与四家 OpenAI 兼容服务**完全相同**（`/chat/completions`、`/models`、`/embeddings`），所以不需要适配 OpenAI 的形状。
+- Key：`AIza` 开头，后面跟 35 字符的 base64url 变体（字母数字 + `-` + `_`），总长约 39 字符。`aistudio.google.com` 的「Get API key」生成。**注意**：文档示例写作 `AIza-<GOOGLE_KEY>`，其中 `-` 是占位连接符，真实 Key **没有**这个横线——你之前说要按本地文件逐字核对这条，现在核完了：`AIza` 后面直接跟 body，无分隔符。前缀匹配用 `AIza`（不带横线），否则真实 Key 会被误判成非法。
+- 鉴权两条路，按端点类型选：
+  - REST / 原生 Gemini API：`x-goog-api-key: AIza...`（文档明确建议用头，不要用 `?key=` 查询串——查询串会被日志、代理、referer 一起带走，等于把 Key 打印到三处）
+  - OpenAI 兼容端点：`Authorization: Bearer AIza...`
+- SDK 名称与弃用情况：官方 SDK 叫 `google-genai`（PyPI）/ `@google/genai`（npm）。另外两个——`google-generativeai`（PyPI）/ `@google/generative-ai`（npm）——**已弃用**，官方明写了不要用。
+- 这不影响插件（本插件直接发 HTTP 请求），但影响你在文档里引用官方示例的方式。
+
+### 7.2 协议族与默认 API `[doc-local]`
+
+**默认 API 是 Interactions API**：`POST /v1beta/interactions`（create / cancel / get / delete）。`generateContent` 是**遗留 API**，仍然支持，但不再接受新特性。
+
+- 「默认」这个词是说官方文档首页和 SDK 默认都推 Interactions。插件不必跟随默认，因为这个 API 的请求/响应形状与 OpenAI 的 chat/completions 不同。本插件走 **OpenAI 兼容端点**（形状与另外四家相同），或原生 `generateContent` / `:streamGenerateContent`（需专门的解析器）。**不要**再选第三个形状——三种形状三种流式解析器，维护成本会压垮这个项目。
+- 2026-05 官方对 Interactions 做了**破坏性变更**：`steps` schema 与响应格式变了。如果你选择走 Interactions，需锁定 `v1beta` 的某个时间快照；`v1` 稳定版没有这个变更。这条记在这里，是因为搜索资料看的是旧版，你复现不出来。
+- `v1beta` 是当前默认，`v1` 是「稳定」档。**约定用 `v1beta`**：模型清单页给的所有端点上 `v1beta` 最全。`v1` 可能不覆盖新模型。这是取舍，不是官方结论。
+
+### 7.3 OpenAI 兼容端点覆盖到什么程度 `[doc-local]`
+
+OpenAI 兼容层覆盖的是**形状**（chat/completions 请求体、`choices[0].message` 响应体、流式 SSE 的 `delta` 语义），覆不上 Gemini 独有的**能力**：
+
+- 连通调：`search_grounding`、`maps_grounding`、`code_execution`、`url_context`、`computer_use`、`file_search`，在 OpenAI 兼容端点上一般只能用「函数调用」模拟，或干脆不开放。
+- Gemini 独有：`decision` 类模型（`gemini-decision-1`）、`antigravity` 系（Managed Agents，`antigravity-preview-*`）、`deep-research` 系（`deep-research-preview-*` / `deep-research-max-preview-*`）、Live API 系列（`gemini-*-live`），这些有自己的端点形状（`/v1beta/decisions`、`/v1beta/agents`、`/v1beta/interactions`、WebSocket `bidi-generate-music`），与 OpenAI 兼容端点不是一回事。
+- 本插件 v1 **只接 OpenAI 兼容端点**（`/v1beta/openai`）。上面这些专用端点，插件只做「目录展示 + 计入配额统计是否会影响」，不做转发。这样实现量收敛在一个协议解析器里，与另外四家共用同一套重试/冷却/限流逻辑。
+- 目录里必须给这些模型标 `route: 'dedicated'`（专用端点），且在 UI 上写明「本插件不代理此端点」。**不要**把它们塞进 chat/completions 的模型下拉——用户选了会得到 404，然后误以为是限流 bug。
+
+### 7.4 限流：官方速率限制表（`[doc-local]`，照抄）`[doc-local]`
+
+官方速率限制页按**层**给出 RPM / TPM / RPD。这两层指计费档位（Free / Paid），与 AMD 的「平台准入/网关计量」两层是不同概念——不要混用「层」这个词。
+
+| 模型 | RPM | TPM | RPD |
+|---|---|---|---|
+| gemini-4-hydrogen | 5 | 250,000 | 20 |
+| gemini-3.8-flash | 5 | 250,000 | 20 |
+| gemini-3.6-flash | 5 | 250,000 | 20 |
+| gemini-3-flash | 5 | 250,000 | 20 |
+| gemini-2.5-flash | 5 | 250,000 | 20 |
+| gemini-3.5-flash-lite | 15 | 250,000 | 500 |
+| gemini-3.1-flash-lite | 15 | 250,000 | 500 |
+| gemini-2.5-flash-lite | 10 | 250,000 | 20 |
+| gemini-2.5-flash-tts | 3 | 10,000 | 10 |
+| gemini-3.1-flash-tts | 3 | 10,000 | 10 |
+| gemini-3.8-flash-tts | 3 | 10,000 | 10 |
+| gemini-3.8-flash-lite-tts | 3 | 10,000 | 10 |
+| antigravity-preview-09-2026 | 60 | 100,000 | 100 |
+| gemini-decision-1 | 200 | 50,000 | 10,000 |
+| gemini-embedding-001 | 100 | 30,000 | 1,000 |
+| gemini-embedding-2 | 100 | 30,000 | 1,000 |
+| gemma-4-26b | 30 | 16,000 | 14,400 |
+| gemma-4-31b | 30 | 16,000 | 14,400 |
+| gemini-robotics-er-2-preview | 5 | 250,000 | 20 |
+
+- **无免费层**：`gemini-4-argon`、`gemini-4-carbon`、`gemini-3.1-pro`、`gemini-2.5-pro`、`gemini-2-flash` / `gemini-2-flash-lite`（即 2.0 系，已 Shut down，见 7.6）、图像 / 音乐 / 视频类（Nano Banana 系列、Lyria、Omni）、`deep-research` / `computer-use`。这些模型在 Free 档调直接 429 `RESOURCE_EXHAUSTED`，与本插件本地限流无关——UI 必须把「Free 档无此模型」和「本地预算用尽」两种 429 分开展示，否则用户会去调松预算。
+- **Live 模型**（`gemini-2.5-flash-native-audio-dialog`、`gemini-3-flash-live`、`gemini-3.5-live-translate`、`gemini-3.5-transcribe-live`、`gemini-3.8-live` / `-extended-thinking`）：RPM 与 RPD 均「无限制」，只有 TPM 分别 1M / 65K / 20K / 20K / 65K 上限。这类模型的 429 只会由 TPM 触发，**只做请求数限流对它无效**——插件对 Live 模型的面板必须把 TPM 挂在前面，不能像其他模型那样 RPM 占首位。
+- **工具计费**（与限流无关，但影响 pts 预算）：Search Grounding / Maps Grounding 免费额度：Gemini 2 与 2.5 系为 1,500/月，Gemini 3 及以后为 0（即不带免费额度），默认 1,500/月。付费层超出后 Search Grounding 为 $0.0125/次检索，上限 $10/1,000 次。
+- **没有给出的数字不要推**：付费层（Paid）的 RPM / TPM / RPD **在用户提供的资料里没有逐模型数值**。catalog 里 `paid.*` 全部 `null` 且 `source: 'unknown'`。不要因为 Free 档数字有序（5 / 15 / 10）就假设 Paid 是 2 倍或 10 倍——Google 的 Paid 档是逐模型公布的，与 Free 「看起来像一条曲线」完全不是一回事。
+
+### 7.5 429 语义：与 AMD 显著不同的一点 `[doc-local]`
+
+- Google 的 429 是 gRPC 风格的 `RESOURCE_EXHAUSTED`，响应体：
+
+  ```json
+  {
+    "error": {
+      "code": 429,
+      "message": "...",
+      "status": "RESOURCE_EXHAUSTED",
+      "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "37s"}]
+    }
+  }
+```
+
+- **`Retry-After` 头与 `retryDelay` 字段不是永远都在**：TPM 耗尽时通常带 `retryDelay`，RPM 超出时常常两者都没有。这直接与铁律 4 相撞——铁律 4 说「上游给的 Retry-After 优先」。**在 Google 上没有上游值可优先时，退回本地退避**（指数 + 抖动，起始 2 秒、上限 60 秒）。不要照抄 AMD 的 60 秒、更不要给它设到 24 小时。
+- **配额归属（quota project / quota id）**：Google 的 429 有时带 `QuotaFailure` detail，指出被哪条配额限制（例如按 `GenerateContent` 请求数、或按 token 数）。插件 `classify()` **必须**读它，把 `rpm` / `tpm` / `rpd` 分出来，否则默认全部归 `rate_opaque`。tpm 类 429 不应该冷却整把 Key——降本次请求的 `max_tokens` 或换更小模型再试；rpd 类才冷却到次日 `Pacific Time` 零点。这两种 429 的处置完全相反，分错就是连锁失败。
+- **`dailyQuota` 的重置时区是太平洋时间**（Google 每日配额），不是北京时间，也不是账号级 `/v1/usage` 返回的 `daily_reset_at`。`catalog/limits.json` 里 `quotaTimezone: "America/Los_Angeles"`。UI 的「重置剩余」文案必须按这个时区算，否则会早 8 或 16 小时显示「已重置」。
+- **模型不存在/已关停**：返回 404 `NOT_FOUND`，message 含 `models/xxx is not found` 或 `is not supported`。与 AMD 的 400 不同，Google 用 404。插件对 404 不重试、不冷却 Key，触发一次目录刷新。
+
+### 7.6 模型清单 `[doc-local]`
+
+ID 一律带 `models/` 前缀（`models/gemini-4-hydrogen`）。**`generationConfig.model` 与 `GET /v1beta/models` 的 `name` 字段都要这个前缀；但 OpenAI 兼容端点的 `model` 字段不带前缀（`gemini-4-hydrogen`）。** 这是本 Provider 最容易踩的坑——两条路径前缀规则**相反**，且官方在 OpenAI 兼容文档里只用了一句「use the model name without the models/ prefix」带过。
+
+插件在 `google` 适配器里需要一个显式函数 `stripModelsPrefix(id)` / `addModelsPrefix(id)`，调用点**只能**在 adapter 内部，禁止 UI 层自行拼接。`docs/05` 的模型选择器只展示 stripped 形态，`docs/03` 的 `NormalizedModel.id` 一律存 stripped 形态，`docs/07` 的 H-02 夹具专门验这个。
+
+### 7.7 可玩性与排期 `[doc-local]`
+
+- 用户在 Google 侧的档位是 **Free**（`planTier: free`）。Free 档的 20 RPD 非常小——RPD 20 意味着这个 Provider 只能做「偶尔切过去用一个非关键问题」的角色，**不能**承载长时间 agent 会话。05-UI 的 Provider 卡片必须在 Free 档显示「RPD 20：约够 20 次短对话」这句人话，而不是只显示 `20 RPD`。
+- 免费层 TPM 250,000 = 单次 25 万 token 上限。长上下文模型（1M ctx）在免费层会**直接撞 TPM 而非 RPM**，这是第 2 个与四家都不同的点。`admitRpm` 的上调策略在 Gemini 上必须由 TPM 余量门控，不能只看 RPM。
+- 结论：Google 适配器排在最后（06-TASKS 的阶段 8），是「第五家可选项」，不是主跑道。
+
+### 7.8 变更记录 `[doc-local]`
+
+- 清除（11-18 官方模型清单页标记 Shut down）：`gemini-2.0-flash`、`gemini-2.0-flash-lite`、`gemini-robotics-er-1.6-preview`、`gemini-2.5-computer-use-preview-10-2025`、`gemini-3.1-flash-lite-preview`、`gemini-3-pro-preview`、`imagen-4.0-generate`、`gemini-2.5-flash-image`（定价页写 2027-03-15 关停，迁移目标 `gemini-3.1-flash-lite-image`）。
+- 清除（llms.txt 曾列、模型清单页端点表未确认，存在性无法核实）：`gemini-3.7-flash`、`gemini-3.5-flash`、`veo-3.1-generate-preview`、`veo-3.1-lite-generate-preview`、`veo-2.0-generate-001`、`gemini-robotics-er-1.5-preview`、`antigravity-preview-05-2026`、`deep-research-pro-preview-12-2025`、`gemini-embedding-2-preview`。这 9 项**不得注册**。
+- 保留：`lyria-realtime-exp`（llms.txt 列、清单页复核确认存在）、`gemini-2.5-flash` / `gemini-2.5-flash-lite` 的定版 preview（有命名规范示例佐证）。
+- ID 勘误 3 处：`antigravity-preview-09-2026`（非 05）、`deep-research-preview-04-2026`、`gemini-embedding-001`。

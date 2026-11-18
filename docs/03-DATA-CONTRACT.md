@@ -51,8 +51,10 @@ export interface Sourced<T = unknown> {
 ### 3.1 `ProviderId`
 
 ```ts
-type ProviderId = 'amd' | 'nim' | 'sensenova' | 'agnes';
+type ProviderId = 'amd' | 'nim' | 'sensenova' | 'agnes' | 'google';
 ```
+
+`google` 按同一抽象层建模：一个 Account 对应一把 `AIza` Key。与其他四家不同的是，Google 的 RPM / TPM / RPD 都是 **按模型** 给的（见 02 §7.4），所以 `Account.limits` 不承载 Google 的预算；Google 的预算只能从 `providerId + modelId` 两级键去查 02 §7.4 的表（或 catalog 里的 `freeTier.modelLimits`）。这不是特例，而是约束：任何代码不得给 Google 猜一个账号级 RPM。
 
 ### 3.2 `Account`
 
@@ -109,7 +111,7 @@ interface NormalizedModel {
     jsonMode?: Sourced<boolean>;
     structuredOutputs?: Sourced<boolean>;
   };
-  reasoningLevels?: Sourced<string[]> | null; // 四家 /v1/models 均未提供 → unknown
+  reasoningLevels?: Sourced<string[]> | null; // 五家 /v1/models 均未提供 → unknown
 
   // 价格（全是字符串；保留原文，不转 float）
   pricing?: {
@@ -230,7 +232,7 @@ interface ProviderAdapter {
 3. **SenseNova 非标准错误**：`{"error":{"code":16,"message":"Forbidden"}}` 无 `type` → 按数字 code + message 归类，**不能因缺 `type` 抛解析异常**。
 4. **Agnes 402 与 429 分开**：402 走 `plan_credit`，429 走 `rpm`/`concurrency`，**永不合并**。
 5. **NIM 响应头可能缺失**：`X-RateLimit-*` 出现就用，不出现就纯本地预算，不得报错或阻塞。
-6. **模型目录结构差异**：AMD 裸 `{data}`、NIM `{object:'list',data}`、SenseNova `{data}`（OpenRouter 风）、Agnes `{data}`（无规格字段）→ **四个独立解析器**，禁止共用 OpenAI SDK 的 `models.list()`。
+6. **模型目录结构差异**：AMD 裸 `{data}`、NIM `{object:'list',data}`、SenseNova `{data}`（OpenRouter 风）、Agnes `{data}`（无规格字段）、Google `{models:[{name,displayName,version,description,inputTokenLimit,outputTokenLimit,supportedGenerationMethods,supportedActions,temperature,topP,topK,thinking}],nextPageToken}`（`name` 带 `models/` 前缀；长度字段叫 `inputTokenLimit` / `outputTokenLimit`，不是 `context_length` / `max_output_tokens`；归一化时 strip 前缀，请求时反过来 add 回去；还得处理分页）→ **五个独立解析器**，禁止共用 OpenAI SDK 的 `models.list()`。
 
 ---
 
@@ -381,3 +383,5 @@ interface MetricsResult {
 - 缺失字段**缺省而非 0**：折线图遇缺省点断开，禁止用 0 连线（会伪造「那时候用量为 0」的结论）。
 - 看板查询**只读本地聚合**，不得为刷新图表去调上游 `/v1/usage`。
 - `DailyRollup` 的 `estimatedCostPts` 在无单价来源时为 `null`，聚合时**跳过 null 而非当 0 累加**。
+
+

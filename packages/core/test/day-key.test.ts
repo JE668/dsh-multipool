@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beijingDayKey, beijingResetEpochMs, dayKeyOf } from '../src/day-key.js'
+import { beijingDayKey, beijingResetEpochMs, dayKeyOf, msUntilBeijingReset } from '../src/day-key.js'
 
 /**
  * 北京时间自然日（docs/02 §1.2 每日用量上限: 00:00 UTC+8 重置; docs/04 §1 Gate 1 dailyQuota）
@@ -60,6 +60,11 @@ describe('dayKeyOf(epochMs, offsetMinutes)', () => {
   it('offset 480 == Beijing', () => {
     expect(dayKeyOf(Date.parse('2026-08-25T16:00:00Z'), 480)).toBe('2026-08-26')
   })
+
+  it('returns null (never NaN-NaN-NaN) for a non-finite offset', () => {
+    expect(dayKeyOf(Date.parse('2026-08-25T16:00:00Z'), Number.NaN)).toBeNull()
+    expect(dayKeyOf(Date.parse('2026-08-25T16:00:00Z'), Number.POSITIVE_INFINITY)).toBeNull()
+  })
 })
 
 describe('beijingResetEpochMs(dayKey)', () => {
@@ -67,8 +72,19 @@ describe('beijingResetEpochMs(dayKey)', () => {
     expect(beijingResetEpochMs('2026-08-26')).toBe(Date.parse('2026-08-26T00:00:00+08:00'))
     expect(new Date(beijingResetEpochMs('2026-08-26')!).toISOString()).toBe('2026-08-25T16:00:00.000Z')
   })
-  it('null for junk', () => {
+  it('null for junk day key', () => {
     expect(beijingResetEpochMs('2026-13-01')).toBeNull()
     expect(beijingResetEpochMs('')).toBeNull()
+  })
+
+  // msUntilBeijingReset 必须在两条 null 分支上回落 null，而不是算出 NaN/负数倒计时。
+  it('msUntilBeijingReset returns null when the day key cannot be derived', () => {
+    expect(msUntilBeijingReset(Number.NaN)).toBeNull()
+    expect(msUntilBeijingReset(Number.POSITIVE_INFINITY)).toBeNull()
+  })
+
+  it('msUntilBeijingReset counts down to the next 00:00+08', () => {
+    expect(msUntilBeijingReset(Date.parse('2026-08-25T16:00:00Z'))).toBe(86_400_000)
+    expect(msUntilBeijingReset(Date.parse('2026-08-25T15:59:59Z'))).toBe(1_000)
   })
 })
