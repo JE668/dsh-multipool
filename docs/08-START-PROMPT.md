@@ -13,7 +13,7 @@
 1. **先读规格书，再写代码。** 依次读：
    - `docs/00-README.md`（铁律 + 已确认决策 D1–D7）
    - `docs/01-PRD.md`（目标、非目标、支持矩阵）
-   - `docs/02-CONSTRAINTS.md`（四家 Provider 的**唯一数值来源**）
+   - `docs/02-CONSTRAINTS.md`（五家 Provider 的**唯一数值来源**；Google Gemini 在 §7，限流按模型给）
    - `docs/03-DATA-CONTRACT.md`（统一数据模型、`Sourced<T>`、`RateKind`）
    - `docs/04-SCHEDULER.md`（三道闸、粘性、退避、迁移代价）
    - `docs/05-UI.md`（左栏图标、浮层、看板、设置面板）
