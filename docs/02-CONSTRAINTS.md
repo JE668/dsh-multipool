@@ -292,7 +292,7 @@ NIM 是唯一**不因限流触发跨 Key 迁移**的 Provider（限额按 Key �
 - Key 前缀：文档**未给出**。`[user]` 用户现用免费 Key 为 **`sk-` 开头**（此前社区插件文档的 `cpk-` 口径不适用）。→ 前缀检查**只允许**作为软提示，不得据此拒绝 Key。
 - Dashboard 管 API keys 与 billing；订阅入口 `https://platform.agnes-ai.com/subscribe/subscription`
 
-### 4.2 429 与 402 的语义分工 `[doc]`（四家中最清晰）
+### 4.2 429 与 402 的语义分工 `[doc]`（五家中最清晰）
 
 - **429 Too Many Requests**：「The request rate is too high and it exceeds the RPM limit of the current account.」常见原因：RPM 超限；**Free users are limited to RPM 20**；并发太多；短时间重复请求太多；自动重试频率太高。解决：等 1 分钟再试 / 降低频率 / 控制并发 / 合理重试 / 短时间避免重复请求 / 量大升级 Token Plan。
   → **429 只代表速率，与额度无关。**
