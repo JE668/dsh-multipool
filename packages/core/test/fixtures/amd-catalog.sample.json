@@ -1,0 +1,76 @@
+{
+  "data": [
+    {
+      "id": "DeepSeek-V4-Flash",
+      "name": "DeepSeek V4 Flash",
+      "description": "Fast general model",
+      "family": "deepseek",
+      "aliases": [
+        "deepseek-v4-flash"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "deepseek"
+      },
+      "top_provider": {
+        "is_moderated": false
+      },
+      "providers": [
+        {
+          "providerId": "amd",
+          "externalId": "deepseek-v4-flash",
+          "pricing": {
+            "prompt": "0.00000014",
+            "completion": "0.00000028",
+            "input_cache_read": "0.0000000028"
+          },
+          "streaming": true,
+          "vision": false,
+          "tools": true,
+          "reasoning": true,
+          "stability": "beta"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.00000014",
+        "completion": "0.00000028",
+        "input_cache_read": "0.0000000028"
+      },
+      "context_length": 1048576,
+      "supported_parameters": [
+        "tools",
+        "reasoning",
+        "max_tokens"
+      ],
+      "json_output": true,
+      "structured_outputs": false,
+      "free": false,
+      "stability": "beta"
+    },
+    {
+      "id": "tiny-free",
+      "name": "Tiny Free",
+      "context_length": 8192,
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "free": true,
+      "stability": "stable"
+    },
+    {
+      "id": "no-free-field",
+      "name": "No Free Field",
+      "context_length": 32768,
+      "pricing": {
+        "prompt": "0.0000002",
+        "completion": "0.0000004"
+      }
+    }
+  ]
+}

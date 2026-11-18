@@ -189,6 +189,13 @@ export interface ModelCatalogResult {
   readonly models: NormalizedModel[]
   readonly fetchedAt: string
   readonly error?: string
+  /**
+   * Set when a refresh failed and the previous snapshot is being served. Absent means
+   * the list was fetched at fetchedAt (02 §1.7). Never a substitute for an empty list:
+   * a caller that sees staleSince must also see the old models, and the UI must say
+   * "this is the 2026-11-17 snapshot" rather than pretend the fetch worked.
+   */
+  readonly staleSince?: string
 }
 
 export interface UsageResult {
