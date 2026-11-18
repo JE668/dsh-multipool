@@ -68,11 +68,9 @@ export type Stability = 'stable' | 'beta' | 'unstable' | 'experimental'
 export type AgnesTier = 'free' | 'lite' | 'plus' | 'pro' | 'max'
 
 /**
- * Every rate-limit outcome the scheduler knows how to handle.
- * The first eight come from docs/03 section 4 and docs/02 section 1.4.
- * They are the only values that may be stored on a MetricsEvent or drawn on a chart.
- * The trailing five (network / upstream_5xx / client_4xx / ok / unknown) are transport
- * outcomes: they steer retry and cooldown, and must never reach the rate-limit panels.
+ * The eight rate-limit outcomes the scheduler knows how to handle (docs/03 §4).
+ * They are the only values that may be stored on MetricsEvent.rateKind or drawn on a panel.
+ * Transport outcomes live in TransportKind: they steer retry and cooldown, never a panel.
  */
 export type RateKind =
   | 'rpm_key'
@@ -83,16 +81,11 @@ export type RateKind =
   | 'rate_opaque'
   | 'auth'
   | 'model_missing'
-  | 'network'
-  | 'upstream_5xx'
-  | 'client_4xx'
-  | 'ok'
-  | 'unknown'
 
 export type RateClass = RateKind
 
-/** Transport-level outcomes. Same union for now; kept as a distinct name so panels can type against RateKind only. */
-export type TransportKind = RateKind
+/** Transport-level outcomes. Disjoint from RateKind so a panel cannot draw one by accident. */
+export type TransportKind = 'network' | 'upstream_5xx' | 'client_4xx' | 'ok' | 'unknown'
 
 export type AccountStatus =
   | 'available'
@@ -222,4 +215,67 @@ export interface ProviderAdapter {
   fetchUsage?(key: string): Promise<UsageResult>
   readHeaders?(res: AdapterResponse): HeaderSnapshot | null
   backoffPolicy(rc: RateClass, attempt: number): Backoff
+}
+
+/** 01-PRD 的 429 分类表（docs/03 §4）只有这 8 个值属于限流分类。 */
+export const RATE_KINDS: readonly RateKind[] = [
+  'rpm_key',
+  'rpm_ip',
+  'concurrency',
+  'daily_quota',
+  'plan_credit',
+  'rate_opaque',
+  'auth',
+  'model_missing',
+]
+
+/** 运输层结果：只用于重试与冷却决策，不得写进 MetricsEvent.rateKind（03 §4）。 */
+export const TRANSPORT_KINDS: readonly TransportKind[] = ['network', 'upstream_5xx', 'client_4xx', 'ok', 'unknown']
+
+export function isRateKind(value: string): value is RateKind {
+  return (RATE_KINDS as readonly string[]).includes(value)
+}
+
+/** AMD 三种错误壳（02 §1.4）+ Anthropic 壳 + 非 JSON 体（HTML / 空）。 */
+export type ErrorShell =
+  | 'top-level'
+  | 'detail'
+  | 'detail-error'
+  | 'anthropic'
+  | 'html'
+  | 'empty'
+  | 'unparsable'
+
+/**
+ * 解析后的错误体。
+ * `message` / `code` / `type` 缺就是 null —— 从不用空串或占位文本冒充上游原话。
+ */
+export interface ParsedError {
+  readonly shell: ErrorShell
+  readonly message: string | null
+  readonly code: string | null
+  readonly type: string | null
+  readonly json: Record<string, unknown> | null
+  /** true = 非空 body 读不出任何一种已记录的壳（diagnostics 必须保留原文，Z-07）。 */
+  readonly untrusted: boolean
+}
+
+/** 每次上游调用之后落库的事件（03 §3.4）；不含请求正文（07 D-02）。 */
+export interface MetricsEvent {
+  ts: number
+  providerId: ProviderId
+  accountAlias: string
+  keyIdMasked: string
+  modelId: string
+  requestId: string
+  status: number
+  latencyMs: number
+  attempt: number
+  promptTokens?: number
+  completionTokens?: number
+  reasoningTokens?: number
+  cacheReadTokens?: number
+  rateKind?: RateKind
+  queueWaitMs?: number
+  concurrencyAtSend: number
 }

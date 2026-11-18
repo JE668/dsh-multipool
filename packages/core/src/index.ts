@@ -31,6 +31,9 @@ export {
   sourceRank,
   unknownValue,
   unknownSource,
+  RATE_KINDS,
+  TRANSPORT_KINDS,
+  isRateKind,
   type ProviderId,
   type Source,
   type Sourced,
@@ -53,4 +56,17 @@ export {
   type UsageResult,
   type Backoff,
   type ProviderAdapter,
+  type TransportKind,
+  type ErrorShell,
+  type ParsedError,
+  type MetricsEvent,
 } from './contract.js'
+export {
+  parseAmdError,
+  classifyAmd,
+  classifyAmdRateClass,
+  classifyAmdTransportKind,
+  headerOf,
+  retryAfterMsOf,
+  type AmdDiagnostic,
+} from './amd-error.js'
