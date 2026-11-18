@@ -36,7 +36,7 @@ const SKIP = new Set(['node_modules', '.git', 'dist', 'coverage'])
 const DOCS = [
   '00-README.md', '01-PRD.md', '02-CONSTRAINTS.md', '03-DATA-CONTRACT.md',
   '04-SCHEDULER.md', '05-UI.md', '06-TASKS.md', '07-ACCEPTANCE.md',
-  '08-START-PROMPT.md',
+  '08-START-PROMPT.md', '09-AUDIT-LOG.md',
 ]
 
 // Codepoints that mean "something upstream mangled this file". U+FFFD is the
@@ -202,9 +202,15 @@ function checkJson() {
 // A limit value may be a sourced scalar {value, source} or a group of them
 // (AMD's backoffNoHeader nests baseMs/capMs/jitter). Walk the tree so a group
 // without its own tag is not reported as a missing one.
+// A source tag earns its place only from this list. An empty string or an
+// invented label is the same as no tag at all: nobody can trace it back.
+const SOURCE_TAGS = new Set(['doc', 'doc-local', 'probe', 'user', 'assume', 'unknown'])
+
 function nestedSources(id, node, path) {
   if (!node || typeof node !== 'object') return
-  const here = path + (node.value !== undefined && typeof node.source !== 'string' ? ' [no source]' : '')
+  const tagged = node.source !== undefined
+  const ok = tagged && typeof node.source === 'string' && SOURCE_TAGS.has(node.source)
+  const here = path + (node.value !== undefined && !ok ? ' [no source]' : '')
   if (here !== path) bad('catalog/limits.json', 1, id + here)
   for (const key of Object.keys(node)) {
     if (key === 'value' || key === 'source' || key === 'ref' || key === 'note') continue
