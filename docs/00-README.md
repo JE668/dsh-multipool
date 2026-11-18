@@ -37,6 +37,15 @@
 | D6 | SenseNova 收到 429 采用**降速**方案：**不**整账户暂停到 5h 边界，只降低本账户速率并退避 |
 | D7 | 项目名前缀 `dsh-`，本项目名 **`dsh-multipool`** |
 
+### 第一批实施中确认的决策（2026-11-18）
+
+| 编号 | 决策 |
+|---|---|
+| ADR-10 | **AMD 准入预算 = `floor(min(20, 30) * 0.85 / 1.5)` = 11 RPM/账号**，高于 11 不靠任何官方数值支撑；被 `X-RateLimit-Remaining-User-RPM` 校准时**只收紧不放宽**。02 的 20/30 不动。 |
+| ADR-11 | **AMD 设置组落在独立 `settings.section`**（id `dsh-multipool-amd`，order 30 段），**不**复用 Models 页 provider 卡片（那张卡按 `settingsNs` 跨插件寻址，本插件五家共一个 Config 传不进去）；Host 侧用 `ctx.settings.configure({auto:false}, ctx.fiber)` 关掉自动页，避免出现两个 AMD 入口。`settings.installSection` / `settings.plugin.item` 在 DSH 0.2.2-rc.3 **不存在**，不得再引用。 |
+
+用户（2026-11-18 22:34）已批复 ADR-10 与 ADR-11 两项，其余文档按此对齐。
+
 
 ---
 

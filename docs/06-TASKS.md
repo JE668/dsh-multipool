@@ -110,8 +110,9 @@
 - **验收**：U-04 ~ U-07
 
 ### T-2-d 设置面板（AMD 组 + 全局组）`dep: T-2-c`
-- Host：`settings.installSection('dsh-multipool', schema)`。
-- Client：`settings.plugin.item` 卡片，key 一致。
+- Host：`ctx.inject(['settings'], child => child.effect(() => child.settings.configure({auto:false}, ctx.fiber)))` 注册命名空间 `dsh-multipool` 并关掉自动页。
+- Client：`ctx.slots.inject('settings.section', () => ctx.slots.register({ name:'settings.section', id:'dsh-multipool-amd', order:30, label:()=>t('nav'), locale:NS, inject:sectionInjected }, AmdSettingsSection))`，独立设置页（ADR-11）。
+  - `settings.installSection` / `settings.plugin.item` 在 DSH 0.2.2-rc.3 **不存在**，不得再引用（见 05 §5「已知差异」、00 ADR-11）。
 - 保存前「预算自检」：并发 > 8 或 RPM > 20/30 ⇒ 阻止并给依据文案。
 - `rejected_key`：填 sk- 或填实例域名 ⇒ 红字拒绝。
 - **验收**：C-01 ~ C-03
