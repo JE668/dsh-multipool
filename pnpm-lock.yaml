@@ -212,6 +212,9 @@ importers:
       '@dsh-multipool/core':
         specifier: workspace:*
         version: link:../core
+      '@dsh-multipool/plugin-client':
+        specifier: workspace:*
+        version: link:../client-ui
     devDependencies:
       '@types/node':
         specifier: ^24.0.0

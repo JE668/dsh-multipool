@@ -37,6 +37,8 @@ export interface ProviderCountLine {
   readonly total: number
   /** False when the provider publishes no usage endpoint, so "0/0" would be a claim we cannot make. */
   readonly hasEndpoint: boolean
+  /** True when that endpoint answered with actual numbers -- a field present but null is not a reading. */
+  readonly hasReading: boolean
 }
 
 function lineOf(provider: ProviderSnapshot): ProviderCountLine {
@@ -45,6 +47,10 @@ function lineOf(provider: ProviderSnapshot): ProviderCountLine {
     available: provider.tally.available,
     total: provider.tally.total,
     hasEndpoint: provider.usageAvailable || provider.dailyUsedPts !== undefined,
+    hasReading: provider.dailyUsedPts !== undefined
+      && provider.dailyUsedPts.value !== null
+      && provider.dailyLimitPts?.value !== undefined
+      && provider.dailyLimitPts.value !== null,
   }
 }
 

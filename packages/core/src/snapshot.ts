@@ -87,6 +87,14 @@ export interface ProviderSnapshot {
   readonly dailyLimitPts?: Sourced<number>
   /** Upstream reset instant, or null when the provider has no usage endpoint. */
   readonly dailyResetAt?: Sourced<string>
+  /**
+   * When the upstream usage response was read, as the provider stamped it.
+   *
+   * Present next to the numbers because today points move during the day: a reading taken at
+   * 09:41 is a fact as of 09:41 and not as of now. Stamped from the reading itself, never from
+   * the local clock -- the snapshot module has no clock so it cannot quietly become one.
+   */
+  readonly usageFetchedAt?: string
   readonly usageAvailable: boolean
   readonly usageUnavailableReason?: string
   readonly err429LastHour: number
@@ -200,6 +208,7 @@ export function providerSnapshotOf(
     ...(usage?.dailyUsedPts === undefined ? {} : { dailyUsedPts: usage.dailyUsedPts }),
     ...(usage?.dailyLimitPts === undefined ? {} : { dailyLimitPts: usage.dailyLimitPts }),
     ...(usage?.dailyResetAt === undefined ? {} : { dailyResetAt: usage.dailyResetAt }),
+    ...(usage?.fetchedAt === undefined ? {} : { usageFetchedAt: usage.fetchedAt }),
     usageAvailable,
     ...(usage?.reason === undefined ? {} : { usageUnavailableReason: usage.reason }),
     err429LastHour,
