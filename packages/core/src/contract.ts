@@ -268,6 +268,30 @@ export interface ParsedError {
 }
 
 /** 每次上游调用之后落库的事件（03 §3.4）；不含请求正文（07 D-02）。 */
+/**
+ * docs/03-DATA-CONTRACT.md section 3.4: one finished day, per provider and account.
+ * Optional modelId narrows it to a model; readouts that need a model pass one.
+ * Kept "forever": requests/errors are totals and cost is null unless priced, so
+ * this survives the decade the events do not.
+ */
+export interface DailyRollup {
+  /** 'YYYY-MM-DD', in Asia/Shanghai (UTC+8), the boundary AMD bills against. */
+  readonly date: string
+  readonly providerId: ProviderId
+  readonly accountAlias: string
+  readonly modelId?: string
+  readonly requests: number
+  readonly errors: number
+  /** 429s per rate class; 03 says Partial<Record<RateKind, number>>. */
+  readonly err429: Partial<Record<RateKind, number>>
+  readonly promptTokens: number
+  readonly completionTokens: number
+  readonly reasoningTokens: number
+  readonly cacheReadTokens: number
+  /** Null when no price is known: aggregating nulls as 0 would under-report cost. */
+  readonly estimatedCostPts: number | null
+}
+
 export interface MetricsEvent {
   ts: number
   providerId: ProviderId

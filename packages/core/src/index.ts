@@ -60,6 +60,7 @@ export {
   type ErrorShell,
   type ParsedError,
   type MetricsEvent,
+  type DailyRollup,
 } from './contract.js'
 export {
   parseAmdError,
@@ -135,3 +136,10 @@ export {
   type ProxyResponse,
   type ProxyRoute,
 } from './proxy.js'
+export {
+  RETENTION_MS,
+  createMetricsStore,
+  rollupOf,
+  shanghaiDayKey,
+  type MetricsStore,
+} from './metrics.js'
