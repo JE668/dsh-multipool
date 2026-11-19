@@ -1,0 +1,13 @@
+# dsh-multipool, as a bundle for one DSH profile.
+#
+# One row, and no `disabled` on anything that ships with DSH: the icon is added next
+# to the sidebar, not in place of it. Insert is enough -- a patch that only appends
+# cannot take a plugin the user already had away.
+#
+# The id carries the slot it lives in user settings are keyed by (id, not name), so a
+# profile that turns the icon off keeps that decision across a reinstall. `name` is
+# what the loader resolves, and it is the bundle package itself: its `exports["./client"]`
+# is the browser half that registers `sidebar.panellist`.
+- insert:
+    - id: sidebar-panellist-dsh-multipool
+      name: 'dsh-multipool'
