@@ -96,6 +96,16 @@ export interface ProviderSnapshot {
    */
   readonly usageFetchedAt?: string
   readonly usageAvailable: boolean
+  /**
+   * Provenance of the daily point figures: upstream, or nothing at all.
+   *
+   * The point numbers are the one field here that cannot be derived from what we were
+   * told -- no arithmetic over accounts and events yields them, so a reader cannot tell
+   * a miss from a zero by looking. This says which it is. There is deliberately no
+   * estimated member: the plugin does not project a day's spend, and a type that allowed
+   * one would invite the next writer to fill it in.
+   */
+  readonly usageSource?: 'api'
   readonly usageUnavailableReason?: string
   readonly err429LastHour: number
   readonly err429ByKind: Readonly<Partial<Record<RateKind, number>>>
@@ -210,6 +220,7 @@ export function providerSnapshotOf(
     ...(usage?.dailyResetAt === undefined ? {} : { dailyResetAt: usage.dailyResetAt }),
     ...(usage?.fetchedAt === undefined ? {} : { usageFetchedAt: usage.fetchedAt }),
     usageAvailable,
+    ...(usageAvailable ? { usageSource: 'api' as const } : {}),
     ...(usage?.reason === undefined ? {} : { usageUnavailableReason: usage.reason }),
     err429LastHour,
     err429ByKind: byKind,

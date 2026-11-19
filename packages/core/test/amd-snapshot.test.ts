@@ -101,6 +101,34 @@ describe('T-2-a snapshot built on the host', () => {
     expect(nim?.dailyUsedPts).toBeUndefined()
     expect(nim?.dailyLimitPts).toBeUndefined()
     expect(nim?.dailyResetAt).toBeUndefined()
+    // Absent, not 'api' with nothing under it: the client must not have to cross-check
+    // two fields to learn that a number it can see did not come from upstream.
+    expect(nim?.usageSource).toBeUndefined()
+    expect(nim?.usageFetchedAt).toBeUndefined()
+  })
+
+  it('stamps upstream provenance and the reading instant on a provider that answered', () => {
+    const snap = buildSnapshot(
+      {
+        accounts: [],
+        events: [],
+        nowMs: NOW,
+        activeSessions: 0,
+        queued: 0,
+        usage: {
+          amd: {
+            available: true,
+            dailyUsedPts: { value: 5.81, source: 'api' },
+            dailyLimitPts: { value: 40, source: 'api' },
+            fetchedAt: '2026-11-19T01:41:00Z',
+          },
+        },
+      },
+      PROVIDERS,
+    )
+    const amd = snap.providers.find((p) => p.providerId === 'amd')
+    expect(amd?.usageSource).toBe('api')
+    expect(amd?.usageFetchedAt).toBe('2026-11-19T01:41:00Z')
   })
 
   it('never serialises a whole key', () => {
