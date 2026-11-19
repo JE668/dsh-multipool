@@ -115,3 +115,23 @@ export {
   type Session,
   type StickyBinding,
 } from './scheduler.js'
+export {
+  PROXY_ROUTES,
+  PROXY_HEADER_PREFIX,
+  RATE_HEADER_PREFIX,
+  SATURATED_CODE,
+  KeyPool,
+  handleProxyRequest,
+  isProxyRoute,
+  renameRateHeaders,
+  retryAfterSeconds,
+  saturationBody,
+  stripClientAuth,
+  type Forward,
+  type Lease,
+  type PooledKey,
+  type ProxyDeps,
+  type ProxyRequest,
+  type ProxyResponse,
+  type ProxyRoute,
+} from './proxy.js'
