@@ -1,5 +1,5 @@
 {
-  "name": "dsh-multipool-workspace",
+  "name": "dsh-multipool",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.18.0",
@@ -7,6 +7,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "coverage": "pnpm --filter @dsh-multipool/core coverage",
     "lint": "pnpm -r lint"
   },
   "devDependencies": {

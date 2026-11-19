@@ -106,3 +106,37 @@ describe('D-01 rollups carry pts when a price table is given', () => {
     expect(unpriced.rollups()[0]?.estimatedCostPts).toBeNull()
   })
 })
+
+describe('D-01 a later fold adds to the earlier one for the same day', () => {
+  it('merges a second fold of the same day instead of letting it replace the first', () => {
+    const clock = createFakeClock({ now: DAY_ONE })
+    const store = createMetricsStore(clock)
+
+    // Day 9 is old enough to leave on the first sweep, which makes that fold a plain store.
+    // Day 30's finish leaves on the same sweep and its 429 an hour behind, but an hour is
+    // also the sweep spacing, so the 429 only leaves on the second sweep -- and then it has
+    // a day-30 rollup to add to instead of a fresh one to write.
+    store.append(eventAt(9, 0))
+    store.append({ ...eventAt(30, 630), promptTokens: 1000, completionTokens: 500 })
+    store.append({ ...eventAt(30, 690), status: 429, rateKind: 'rpm_key' })
+
+    // Floor at 2026-12-01 10:31 Shanghai: day 9 and the finish are out, the 429 is not.
+    store.prune(DAY_ONE + 54 * DAY_MS + 9271 * 60_000)
+    expect(store.events().length).toBe(1)
+    expect(store.events()[0]?.status).toBe(429)
+    expect(store.rollups().map((rollup) => rollup.date)).toEqual(['2026-11-10', '2026-12-01'])
+
+    // Floor at 2026-12-02 10:31: the 429 is out too, and folds into the day already stored.
+    // Day 9's rollup is still there, so the length is two, not one.
+    store.prune(DAY_ONE + 55 * DAY_MS + 9271 * 60_000)
+    expect(store.events().length).toBe(0)
+    const rollups = store.rollups()
+    expect(rollups.length).toBe(2)
+    const folded = rollups.find((rollup) => rollup.date === '2026-12-01')
+    expect(folded?.requests).toBe(2)
+    expect(folded?.errors).toBe(1)
+    expect(folded?.err429.rpm_key).toBe(1)
+    expect(folded?.promptTokens).toBe(1000)
+    expect(folded?.completionTokens).toBe(500)
+  })
+})

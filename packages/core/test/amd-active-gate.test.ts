@@ -88,3 +88,38 @@ describe('A-18 a header can only lower the budget', () => {
     expect(gate.currentBudget.admitRpm).toBe(3)
   })
 })
+
+describe('AccountGate.peekWait: the queue view, which spends nothing', () => {
+  it('says zero while there is room, and does not take the room', () => {
+    const clock = createFakeClock({ now: 0 })
+    const gate = new AccountGate(clock, DEFAULT_AMD_POLICY)
+    for (let i = 0; i < 3; i += 1) expect(gate.peekWait(clock.now())).toBe(0)
+    expect(gate.tryAcquire('/v1/chat/completions').ok).toBe(true)
+    expect(gate.peekWait(clock.now())).toBe(0)
+  })
+
+  it('reports the wait the next reservation would really be given', () => {
+    const clock = createFakeClock({ now: 0 })
+    const gate = new AccountGate(clock, DEFAULT_AMD_POLICY)
+    let admitted = 0
+    while (gate.tryAcquire('/v1/chat/completions').ok) admitted += 1
+    const wait = gate.peekWait(clock.now())
+    const reservation = gate.tryAcquire('/v1/chat/completions')
+    expect(reservation.ok).toBe(false)
+    expect(reservation.waitMs).toBe(wait)
+    expect(wait).toBeGreaterThan(0)
+    expect(admitted).toBeGreaterThan(0)
+  })
+
+  it('forgets an empty queue, so a cleared gate admits everything again', () => {
+    const clock = createFakeClock({ now: 0 })
+    const gate = new AccountGate(clock, DEFAULT_AMD_POLICY)
+    // two different endpoints, the one window: switching family frees nothing
+    while (gate.tryAcquire('/v1/chat/completions').ok) clock.advance(0)
+    while (gate.tryAcquire('/v1/systemone').ok) clock.advance(0)
+    expect(gate.canAdmit(clock.now())).toBe(false)
+    gate.clear()
+    expect(gate.canAdmit(clock.now())).toBe(true)
+    expect(gate.peekWait(clock.now())).toBe(0)
+  })
+})
