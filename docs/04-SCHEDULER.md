@@ -326,3 +326,18 @@ DSH 插件 Host 侧可能只有一个进程，但用户会**多开 DSH 窗口/�
 |---|---|---|---|
 | `T_STICKY_IDLE` | 15 分钟（`15 * 60_000`） | **assume，用户 2026-11-19 确认** | 本节只给出这个名字和第 3 条解绑条件的语义，全文没有任何数字。实现取 15 分钟：DSH 里一个连续会话的相邻请求很少空这么久，而超过 15 分钟的前缀缓存基本也已冷掉，再迁不必付代价。**没有官方来源，不要把它当事实引用。** |
 | 熔断最小样本数 | 20 | 本节的窗口原文读取 | 本节写到窗口是"最近 20 次（或最近 5 分钟，取较大覆盖）"但没写门槛。不设门槛时，一个刚开始干活、头 3 次就全撞 429 的账号会被 3/3 直接打开，而 3 条样本不足以区分"这个账号坏了"和"刚才那一秒上游抖了"。取满一窗（20）才判，把 S-17 的"连续 3 次"读作趋势而不是立即跳闸。 |
+
+### 9.2 pts 不是本章的计量单位
+
+docs/02 §1.3 对 pts 只给了一条取得渠道：上游自己报。两个来源都是 `api`：
+
+1. `GET /v1/usage` 的 `daily_cost_limit_usd` / `daily_cost_used_usd` / `daily_cost_remaining_usd`（字段名带 usd，单位是 pts）。
+2. 每次成功调用的响应头 `X-RateLimit-Limit-User-Daily-USD` / `X-RateLimit-Used-User-Daily-USD` / `X-RateLimit-Remaining-User-Daily-USD`。官方原话「一般不需要另外查询」。
+
+三条约束：
+
+- §2 的「预算」指 60 秒窗内放行多少个请求，由 `rpmAccount` / `rpmKey` / `conservativeFactor` / `assumedExternalClients` 算出，**不含 pts**。
+- `pointsFor()` 算出的 pts 不得与上游上限相减、不得参与决策与轮转、不得当作「还剩多少」的依据。上游未回就是 unknown，不是 0。
+- 不需要留余量：上游自己会拒，429 的 `code` 说明了是哪一类。
+
+> 因此 `catalog/limits.json` 的 `providers.amd.pointsPricing` 是价格表，`admission: false`，供体量曲线与「本地估算」标签使用；它不是某个账号的余额，相减即错。

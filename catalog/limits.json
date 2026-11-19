@@ -129,6 +129,110 @@
       "retentionDays": {
         "events": 30,
         "rollup": "long"
+      },
+      "pointsPricing": {
+        "admission": false,
+        "admissionNote": "不参与任何限流、预算或余额判定。余额与上限只能来自 GET /v1/usage 与 X-RateLimit-*-Daily-USD 响应头（docs/02 §1.3）；本表不与上游上限相减。",
+        "unit": "pts_per_million_tokens",
+        "source": "doc-local",
+        "ref": [
+          "AMD-RadeonCloud-Provider-Model-config-quickref.md",
+          "section 3.3 (2026-10-19)"
+        ],
+        "derived": "0.14 pts per 1M tokens = 0.00000014 pts per token, the same figure as docs/02 section 1.7 pricing.prompt",
+        "caution": "upstream prices change; the console model card is authoritative",
+        "models": {
+          "DeepSeek-V4-Flash": {
+            "prompt": "0.14",
+            "completion": "0.28",
+            "inputCacheRead": "0.0028",
+            "note": ""
+          },
+          "DeepSeek-V4-Flash-Vision-Exp": {
+            "prompt": "0.14",
+            "completion": "0.28",
+            "inputCacheRead": "0.0028",
+            "note": ""
+          },
+          "DeepSeek-V4.1-Flash": {
+            "prompt": "0.28",
+            "completion": "0.56",
+            "inputCacheRead": "0.0056",
+            "note": ""
+          },
+          "Qwen3.8-27B": {
+            "prompt": "0.035",
+            "completion": "0.07",
+            "inputCacheRead": "0.0007",
+            "note": ""
+          },
+          "MiniCPM5-2B": {
+            "prompt": "0.035",
+            "completion": "0.07",
+            "inputCacheRead": "0.0007",
+            "note": ""
+          },
+          "MiniCPM-V-4.7-1B": {
+            "prompt": "0.035",
+            "completion": "0.07",
+            "inputCacheRead": "0.0007",
+            "note": ""
+          },
+          "MiniCPM-V-4.7-35B-A3B": {
+            "prompt": "0.035",
+            "completion": "0.07",
+            "inputCacheRead": "0.0007",
+            "note": ""
+          },
+          "Gemma-4-31B-IT": {
+            "prompt": "0.035",
+            "completion": "0.07",
+            "inputCacheRead": "0.0007",
+            "note": ""
+          },
+          "GLM-5.3-Flash": {
+            "prompt": "0.28",
+            "completion": "0.56",
+            "inputCacheRead": "0.0056",
+            "note": ""
+          },
+          "MiMo-V2.6-Flash": {
+            "prompt": "0.28",
+            "completion": "0.56",
+            "inputCacheRead": "0.0056",
+            "note": ""
+          },
+          "OmniVoice": {
+            "prompt": "0.035",
+            "completion": null,
+            "inputCacheRead": null,
+            "note": "per million characters"
+          },
+          "MinerU2.5-Pro": {
+            "prompt": "0.001",
+            "completion": null,
+            "inputCacheRead": null,
+            "note": "per page"
+          },
+          "Clef": {
+            "prompt": "0.035",
+            "completion": "0",
+            "inputCacheRead": "0",
+            "note": "output side constant 0"
+          },
+          "d3": {
+            "prompt": "0.035",
+            "completion": "0",
+            "inputCacheRead": "0",
+            "note": "output side constant 0"
+          },
+          "d3-flash": {
+            "prompt": "0.035",
+            "completion": "0",
+            "inputCacheRead": "0",
+            "note": "output side constant 0"
+          }
+        }
       }
     },
     "nim": {
