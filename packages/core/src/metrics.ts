@@ -13,6 +13,7 @@
  */
 
 import type { Clock } from './clock.js'
+import { pointsFor, type PriceInMillion } from './pricing.js'
 import type { DailyRollup, MetricsEvent, ProviderId, RateKind } from './contract.js'
 
 /** 03 section 3.4: events live thirty days. */
@@ -47,7 +48,10 @@ interface MutableCounters {
   cacheReadTokens: number
 }
 
-export function rollupOf(events: readonly MetricsEvent[]): Map<string, DailyRollup> {
+export function rollupOf(
+  events: readonly MetricsEvent[],
+  priceOf?: PriceLookup,
+): Map<string, DailyRollup> {
   const byKey = new Map<string, MutableCounters>()
   for (const event of events) {
     const key = `${shanghaiDayKey(event.ts)}|${event.providerId}|${event.accountAlias}`
@@ -93,25 +97,63 @@ export function rollupOf(events: readonly MetricsEvent[]): Map<string, DailyRoll
       reasoningTokens: counters.reasoningTokens,
       cacheReadTokens: counters.cacheReadTokens,
       // 03 section 3.4: null unless a price source exists. Zero would read as free.
-      estimatedCostPts: null,
+      estimatedCostPts: sumPoints(events, key, priceOf),
     })
   }
   return out
+}
+
+/** Where a pts price comes from; undefined means "no price table", not "free". */
+export type PriceLookup = (modelId: string) => PriceInMillion | null
+
+/**
+ * Total pts for the events behind one rollup key, or null when the price is unknown.
+ * Null propagates rather than skipping unpriced events: a partial total would look like
+ * a cheaper day than it was, and a readout that under-reports a quota invites a 429.
+ */
+function sumPoints(
+  events: readonly MetricsEvent[],
+  key: string,
+  priceOf: PriceLookup | undefined,
+): number | null {
+  if (priceOf === undefined) return null
+  const owned = events.filter(
+    (event) => `${shanghaiDayKey(event.ts)}|${event.providerId}|${event.accountAlias}` === key,
+  )
+  if (owned.length === 0) return null
+  let total = 0
+  for (const event of owned) {
+    const price = priceOf(event.modelId)
+    if (price === null) return null
+    const points = pointsFor(price, {
+      promptTokens: event.promptTokens ?? 0,
+      completionTokens: event.completionTokens ?? 0,
+      reasoningTokens: event.reasoningTokens,
+      cacheReadTokens: event.cacheReadTokens,
+    })
+    if (points === null) return null
+    const value = Number(points)
+    if (!Number.isFinite(value)) return null
+    total += value
+  }
+  return total
 }
 
 /**
  * In-memory store. Events roll off after RETENTION_MS; each day that rolls off is
  * folded into one DailyRollup per (day, provider, account) and kept for good.
  *
- * `append` does the rolling as events arrive, so a long-lived process does not need
- * a timer to stay bounded -- and Z-06 does not have to wait for a cleanup tick.
+ * Rolling is the caller's, not a timer's: append only records, prune folds whatever has
+ * aged out against the nowMs it is given. Doing it inside append would judge an event by
+ * its own timestamp, so replaying thirty-one days of fixtures would fold each day the
+ * instant it arrived and leave a single rollup standing.
  */
-export function createMetricsStore(clock: Clock): MetricsStore {
+export function createMetricsStore(clock: Clock, priceOf?: PriceLookup): MetricsStore {
   let kept: MetricsEvent[] = []
   const rollups = new Map<string, DailyRollup>()
 
   function fold(expired: readonly MetricsEvent[]): void {
-    const byKey = rollupOf(expired)
+    const byKey = rollupOf(expired, priceOf)
     for (const [key, rollup] of byKey) {
       const prior = rollups.get(key)
       if (prior === undefined) {
@@ -131,7 +173,7 @@ export function createMetricsStore(clock: Clock): MetricsStore {
         completionTokens: prior.completionTokens + rollup.completionTokens,
         reasoningTokens: prior.reasoningTokens + rollup.reasoningTokens,
         cacheReadTokens: prior.cacheReadTokens + rollup.cacheReadTokens,
-        estimatedCostPts: null,
+        estimatedCostPts: sumPoints(expired, key, priceOf),
       })
     }
   }
@@ -151,9 +193,6 @@ export function createMetricsStore(clock: Clock): MetricsStore {
   return {
     append(event: MetricsEvent): void {
       kept.push(event)
-      // Rolling out as events arrive keeps the store bounded without a timer,
-      // so nothing here has to be torn down on unload (Z-06).
-      prune(event.ts)
     },
     prune(nowMs: number): void {
       prune(nowMs)

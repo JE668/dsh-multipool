@@ -15,7 +15,7 @@
 import type { Clock } from './clock.js'
 import type { RateKind, Sourced } from './contract.js'
 import { headerOf, parseAmdError, retryAfterMsOf } from './amd-error.js'
-import { AMD_RPM_ACCOUNT, AMD_RPM_KEY } from './limits.js'
+import { AMD_RPM_ACCOUNT, AMD_RPM_KEY, AMD_WINDOW_MS } from './limits.js'
 import { maskKey } from './secret.js'
 
 /** Which AMD paths the proxy exposes, and how it forwards them. */
@@ -123,7 +123,7 @@ export class KeyPool {
     if (this.keys.length === 0) return { retryAfterMs: 60_000 }
     if (this.sentAt.length >= this.admitRpm) {
       const head = this.sentAt[0] ?? nowMs
-      return { retryAfterMs: Math.max(1_000, head + AMD_RPM_KEY - nowMs) }
+      return { retryAfterMs: Math.max(1_000, head + AMD_WINDOW_MS - nowMs) }
     }
     const key = this.keys[this.cursor % this.keys.length]
     this.cursor += 1
@@ -144,7 +144,7 @@ export class KeyPool {
   }
 
   private evict(nowMs: number): void {
-    const floor = nowMs - AMD_RPM_KEY
+    const floor = nowMs - AMD_WINDOW_MS
     while (this.sentAt.length > 0) {
       const head = this.sentAt[0]
       if (head === undefined || head >= floor) break

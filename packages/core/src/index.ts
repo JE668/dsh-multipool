@@ -142,4 +142,14 @@ export {
   rollupOf,
   shanghaiDayKey,
   type MetricsStore,
+  type PriceLookup,
 } from './metrics.js'
+export {
+  PER_MILLION,
+  fallbacks,
+  perMillion,
+  pointsFor,
+  type PointsUsage,
+  type PriceInMillion,
+  type PriceInput,
+} from './pricing.js'
