@@ -68,6 +68,29 @@ export function badgeTextOf(counts: IconCounts): string {
 }
 
 /**
+ * The badge for a view that may not have reached the host yet.
+ *
+ * "0/0" is a readable claim -- an empty pool -- and a running host with no keys really would
+ * mean it. A host that has not answered has made no claim at all, so it shows a pair of dashes
+ * instead. The two cases must not share a glyph.
+ */
+export function badgeFor(view: { readonly attached: boolean; readonly badge: string }): string {
+  return view.attached ? view.badge : NO_VALUE + '/' + NO_VALUE
+}
+
+/**
+ * Line two when there is no host to ask.
+ *
+ * The budget is not zero -- zero is the number a configured pool with no roaming headroom
+ * would print -- it is unknown. So the em dash stands in for the count, and the reason for the
+ * dash is spelled out where line two usually prints its formula.
+ */
+export function rpmLineUnattached(): string {
+  return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08host \u672a\u8fd0\u884c\uff09'
+}
+
+
+/**
  * Line one: accounts, split by provider.
  *
  * A provider with no endpoint gets an em dash instead of "0/Actual", because both of its
@@ -126,6 +149,14 @@ export interface IconLines {
 
 export interface IconViewInput {
   readonly snapshot: Snapshot
+  /**
+   * Whether the host half is reachable and has published a snapshot.
+   *
+   * Without this the drawer cannot tell "no keys configured" from "nothing is running", and
+   * paints both as the same grey 0/0 -- a claim about the user's setup that it never checked.
+   * Defaults to true so a caller that did reach the host does not have to say so twice.
+   */
+  readonly attached?: boolean
   readonly budget: { readonly admitRpm: number; readonly sources: readonly string[] }
   /** The provider whose daily points line three reports, or null when none spoke yet. */
   readonly pointsProviderId: ProviderId | null
@@ -139,10 +170,13 @@ export interface IconView {
   readonly counts: IconCounts
   readonly badge: string
   readonly lines: IconLines
+  /** False when this view is the placeholder the drawer paints before any host half is heard from. */
+  readonly attached: boolean
 }
 
 export function iconViewOf(input: IconViewInput): IconView {
   const snapshot = input.snapshot
+  const attached = input.attached === undefined ? true : input.attached
   const counts = { available: snapshot.overall.available, total: snapshot.overall.total }
   const pointsProvider = input.pointsProviderId === null
     ? undefined
@@ -150,14 +184,21 @@ export function iconViewOf(input: IconViewInput): IconView {
   const points = pointsProvider === undefined
     ? '\u4eca\u65e5 pts ' + NO_VALUE
     : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
+  const level = iconLevelOf(snapshot.overall, snapshot.overall.configured)
+  const lines = {
+    accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
+    rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
+    points: attached ? points : '\u4eca\u65e5 pts ' + NO_VALUE,
+  }
   return {
-    level: iconLevelOf(snapshot.overall, snapshot.overall.configured),
+    level,
     counts,
-    badge: badgeTextOf(counts),
+    attached,
+    badge: badgeFor({ attached, badge: badgeTextOf(counts) }),
     lines: {
-      accounts: accountsLine(snapshot),
-      rpm: rpmLine(input.budget),
-      points,
+      accounts: lines.accounts,
+      rpm: lines.rpm,
+      points: lines.points,
     },
   }
 }

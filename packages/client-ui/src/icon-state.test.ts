@@ -135,3 +135,34 @@ describe('iconViewOf wires the three lines together', () => {
     expect(view.lines.points).toContain(DASH)
   })
 })
+
+describe('attached: a host that never answered is not an empty pool', () => {
+  const unattached = (s: Snapshot) =>
+    iconViewOf({ snapshot: s, budget: BUDGET, pointsProviderId: null, attached: false })
+
+  it('dashes the badge instead of claiming 0/0', () => {
+    const view = unattached(snap([]))
+    expect(view.badge).toBe(DASH + '/' + DASH)
+    expect(view.attached).toBe(false)
+    expect(view.level).toBe('grey')
+  })
+
+  it('dashes the budget and says why, where a configured pool would print 0', () => {
+    const view = unattached(snap([]))
+    expect(view.lines.rpm).toContain(DASH)
+    expect(view.lines.rpm).not.toContain("0")
+    expect(view.lines.rpm).toContain('host')
+  })
+
+  it('says nothing about points either', () => {
+    const view = unattached(snap([]))
+    expect(view.lines.points).toBe('\u4eca\u65e5 pts ' + DASH)
+    expect(view.lines.points).not.toMatch(/\d/)
+  })
+
+  it('keeps the ordinary 0/0 for a host that did answer with no keys', () => {
+    const view = iconViewOf({ snapshot: snap([]), budget: BUDGET, pointsProviderId: null })
+    expect(view.attached).toBe(true)
+    expect(view.badge).toBe('0/0')
+  })
+})

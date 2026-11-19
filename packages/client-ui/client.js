@@ -27,6 +27,7 @@ window.__ModuleLoader__.load({
         snapshot: core.emptySnapshot(),
         budget: { admitRpm: 0, sources: [] },
         pointsProviderId: null,
+        attached: false,
       })
     }
     // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a

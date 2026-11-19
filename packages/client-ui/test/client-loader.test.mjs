@@ -71,6 +71,30 @@ test('paints grey with three dashes when no host channel exists', () => {
   const tree = component({ size: 34, active: false })
   const lines = tree.props.title.split('\n')
   assert.equal(lines.length, 3)
-  assert.ok(lines[0].includes('0/0'))
+  // No host to ask: dashes, not the 0/0 that "configured nothing" would print.
+  assert.ok(lines[0].includes('\u2014/\u2014'))
+  assert.ok(!lines[0].includes('0/0'))
+  assert.ok(lines[1].includes('host'))
   assert.equal(tree.props['data-multipool-level'], 'grey')
+})
+
+test('still prints 0/0 once the host answers with an empty pool', () => {
+  const plugin = factory()
+  let component = null
+  const ctx = {
+    slots: {
+      inject() {},
+      register(owner, comp) { component = comp },
+    },
+    effect(fn) { fn() },
+  }
+  plugin.apply(ctx)
+
+  const answered = core.iconViewOf({
+    snapshot: core.emptySnapshot(),
+    budget: { admitRpm: 0, sources: [] },
+    pointsProviderId: null,
+  })
+  assert.equal(answered.attached, true)
+  assert.equal(answered.badge, '0/0')
 })
