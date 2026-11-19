@@ -173,14 +173,18 @@ export class AccountGate {
 }
 
 /**
- * Starting policy for one AMD account (04 §2.2). Both ceilings are 02 facts; the two
- * coefficients are pinned in catalog/limits.json with source 'assume', so a user can
- * see they are our safety margin and not AMD's numbers. 0.85 is the catalog value
- * (admission margin); 1.5 is the catalog count of assumedExternalClients.
+ * Starting policy for one AMD account (04 section 2.2). Both ceilings are 02 facts; the two
+ * coefficients are catalog values with source 'assume' (0.85 admission margin and
+ * 1.5 assumedExternalClients), and they stay in the default so the gate never sends
+ * more than the gateway meters sensed at 20 per minute.
  */
 export const DEFAULT_AMD_POLICY: AdmissionPolicy = {
   rpmAccount: AMD_RPM_ACCOUNT,
   rpmKey: AMD_RPM_KEY,
+  // 0.85 is the catalog admission margin and 1.5 its assumedExternalClients. User
+  // decision 2026-11-19: both are part of the default, so the gate starts at 11 and
+  // never sends more than the gateway meters. Sending the full 20 is a setting a
+  // user can turn on for an account nothing else touches, not a default.
   conservativeFactor: 0.85,
   assumedExternalClients: 1.5,
   maxWaitMs: 60_000,
