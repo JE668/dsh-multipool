@@ -153,3 +153,20 @@ export {
   type PriceInMillion,
   type PriceInput,
 } from './pricing.js'
+export {
+  ALL_PROVIDERS,
+  buildSnapshot,
+  providerSnapshotOf,
+  serializeSnapshot,
+  sourcedNumberFromWire,
+  toClientAccount,
+  type AccountTally,
+  type ClientAccount,
+  type CoolingEntry,
+  type ProviderSnapshot,
+  type ProviderTally,
+  type RateWindow,
+  type Snapshot,
+  type SnapshotCounters,
+  type SnapshotInput,
+} from './snapshot.js'
