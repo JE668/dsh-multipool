@@ -1,25 +1,25 @@
 {
-  "name": "@dsh-multipool/client-ui",
+  "name": "@dsh-multipool/plugin-client",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "dsh-multipool browser half: left sidebar icon, badge and tooltip.",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "description": "dsh-multipool browser half: left sidebar icon, badge density and the tooltip's three lines.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./client": "./client.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "client.js"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run && node --test test/*.test.mjs",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

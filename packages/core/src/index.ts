@@ -155,7 +155,9 @@ export {
 } from './pricing.js'
 export {
   ALL_PROVIDERS,
+  PROVIDER_ORDER,
   buildSnapshot,
+  emptySnapshot,
   providerSnapshotOf,
   serializeSnapshot,
   sourcedNumberFromWire,

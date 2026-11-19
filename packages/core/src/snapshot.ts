@@ -103,6 +103,9 @@ export interface Snapshot {
   readonly counters: SnapshotCounters
 }
 
+/** The five providers in display order. emptySnapshot needs the list even when nobody is configured. */
+export const PROVIDER_ORDER: readonly ProviderId[] = ['amd', 'nim', 'sensenova', 'agnes', 'google']
+
 /** Placeholder for ProviderTally.providerId on the whole-pool aggregate; not a real provider. */
 export const ALL_PROVIDERS = 'all' as ProviderId
 
@@ -128,7 +131,8 @@ function windowRate(events: readonly MetricsEvent[], nowMs: number): RateWindow 
   }
 }
 
-function diminishing(status: AccountStatus): boolean {
+/** Available is the one status that counts: a cooling or unknown-quota account is not usable now. */
+function accountIsUsable(status: AccountStatus): boolean {
   return status === 'available'
 }
 
@@ -137,7 +141,7 @@ function tallyOf(accounts: readonly ClientAccount[]): AccountTally {
   let total = 0
   for (const account of accounts) {
     total += 1
-    if (account.enabled && diminishing(account.status)) available += 1
+    if (account.enabled && accountIsUsable(account.status)) available += 1
   }
   return { available, total }
 }
@@ -247,6 +251,18 @@ export function buildSnapshot(input: SnapshotInput, providers: readonly Provider
     last5m: windowRate(input.events, input.nowMs),
     counters: { activeSessions: input.activeSessions, queued: input.queued },
   }
+}
+
+/**
+ * An empty pool: no accounts, no events, no usage.
+ *
+ * This is the snapshot an install has before the host has said anything -- the browser half
+ * may mount before the wire is attached, or the host may be shut down. It is deliberately
+ * built through the same code path as a live pool so it cannot drift into "0 available" or
+ * "null total" by accident; every provider comes back configured:false.
+ */
+export function emptySnapshot(): Snapshot {
+  return buildSnapshot({ accounts: [], events: [], nowMs: 0, activeSessions: 0, queued: 0 }, PROVIDER_ORDER)
 }
 
 /** JSON form handed to the client plugin. Same bytes, one place to call scrubSecrets. */
