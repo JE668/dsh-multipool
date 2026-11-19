@@ -170,3 +170,18 @@ export {
   type SnapshotCounters,
   type SnapshotInput,
 } from './snapshot.js'
+export {
+  AMD_BOUNDS,
+  AMD_REJECTED_HOST_FRAGMENT,
+  AMD_REJECTED_KEY_PREFIX,
+  PROVIDER_BASE_URLS,
+  baseUrlIsReadOnly,
+  validateAmdKey,
+  validateConcurrency,
+  validateRpm,
+  type Bound,
+  type BudgetDraft,
+  type Citation,
+  type Rejection,
+  type Validation,
+} from './amd-settings.js'
