@@ -110,22 +110,31 @@ describe('breakers', () => {
     expect(breaker.state(HALF_OPEN_AT_MS + 19)).toBe('open')
   })
 
-  it('a sample older than 5 minutes drops out, even though the window is not full yet', () => {
-    // 04 section 4 says the window is "the last 5 minutes OR the last 20 samples" -- the
-    // first rule on its own already throws stale samples away. Twenty 429s at 1_000 trip it;
-    // five calls ten minutes later plus fifteen more bring the total to forty with only
-    // twenty of them inside the window, all clean, so it closes again through the top-20 rule
-    // rather than through any age-based rescue.
+  // The age half of 04 section 4's window ("last 20 samples, or the last 5 minutes").
+  // Ten 429s and ten healthy calls are exactly 0.50, so the gate is shut. The 123 clean calls that
+  // follow arrive later and later, straddling the five-minute mark; whatever the tie-break at the
+  // boundary, a full and entirely clean top 20 is not a reason to stay open.
+  it('a sample older than 5 minutes stops counting even inside the top 20', () => {
     const breaker = new Breaker(createFakeClock({ now: 0 }))
-    for (let i = 0; i < 20; i += 1) breaker.record(true, 1_000)
-    expect(breaker.snapshot(1_000).state).toBe('open')
-    breaker.reset()
-    for (let i = 0; i < 19; i += 1) breaker.record(true, 1_000)
-    const later = 1_000 + 10 * 60_000
-    for (let i = 0; i < 20; i += 1) breaker.record(false, later + i)
-    expect(breaker.snapshot(later + 19).state).toBe('closed')
-    // 19 stale 429s are still in the ring when a clean window arrives: 19 kept, 1 fresh
-    expect(breaker.snapshot(later + 19).samples).toBe(20)
+    for (let i = 0; i < 10; i += 1) breaker.record(true, 1_000 + i)
+    for (let i = 0; i < 123; i += 1) breaker.record(false, 10 + i * 5_000)
+    const settled = breaker.snapshot(9 * 60_000)
+    expect(settled.samples).toBe(20)
+    expect(settled.errors429).toBe(0)
+    expect(settled.state).toBe('closed')
+  })
+
+  // The age half is a floor, not a cap: prune drops every sample older than five minutes, wherever
+  // it sits in the ring, so a burst that is fully inside the window is judged on all of it. A lone
+  // 429 five minutes later is a window of one, and one is under BREAKER_MIN_SAMPLES.
+  it('a lone failure after a quiet spell is not enough to open the gate', () => {
+    const breaker = new Breaker(createFakeClock({ now: 0 }))
+    for (let i = 0; i < 3; i += 1) breaker.record(false, 1_000 + i)
+    breaker.record(true, 1_000 + 600_000)
+    const settled = breaker.snapshot(1_000 + 600_000)
+    expect(settled.samples).toBe(1)
+    expect(settled.errors429).toBe(1)
+    expect(settled.state).toBe('closed')
   })
 
   it('reset() forgets the samples, the open instant and the probe', () => {
