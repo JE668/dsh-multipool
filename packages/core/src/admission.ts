@@ -26,6 +26,19 @@ export interface AdmissionPolicy {
   readonly assumedExternalClients: number
   /** Longest a caller will sit in queue before the proxy answers 503 itself (04 §3). */
   readonly maxWaitMs: number
+  /**
+   * How much worse staying must get than migrating before a bound session may leave its
+   * account (04 §3.4). Sticky routing exists to keep the prefix cache warm, so this is
+   * the price put on losing it. 04 section 3.4 gives 3.0 for AMD, whose cached input
+   * reads at 1/50 of prompt (02 section 1.7), and 1.0 for the providers whose cached
+   * price is zero or unknown.
+   */
+  readonly migrationBias: number
+  /**
+   * Idle time after which a session stops counting as bound (04 section 3.2). Past this the
+   * cache would be cold anyway, so picking a fresh account costs nothing.
+   */
+  readonly tStickyIdleMs: number
 }
 
 export interface BudgetInput {
@@ -171,4 +184,6 @@ export const DEFAULT_AMD_POLICY: AdmissionPolicy = {
   conservativeFactor: 0.85,
   assumedExternalClients: 1.5,
   maxWaitMs: 60_000,
+  migrationBias: 3.0,
+  tStickyIdleMs: 15 * 60_000,
 }
