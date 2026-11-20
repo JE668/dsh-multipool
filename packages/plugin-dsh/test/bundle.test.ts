@@ -45,4 +45,14 @@ describe('the workspace is one DSH bundle', () => {
     expect(plugin.private).toBe(true)
     expect(client.private).toBe(true)
   })
+
+  it('registers its browser bundle under the name the loader row carries', () => {
+    // client-modules opens <row.name>/client.js refined by the row's rev, then asks
+    // __ModuleLoader__.load for that very id. A bundle that announces its own package name
+    // instead loads fine and registers nothing: "loaded without registering ... via
+    // __ModuleLoader__.load". Only the root package reaches the row, so it is the root name.
+    const source = readFileSync(join(repoRoot, 'packages/client-ui/client.js'), 'utf8')
+    const declared = /__ModuleLoader__\.load\(\{\s*id:\s*'([^']+)'/.exec(source)
+    expect(declared?.[1]).toBe(root.name)
+  })
 })

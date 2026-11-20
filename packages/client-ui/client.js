@@ -17,7 +17,7 @@
  * have that is not a guess.
  */
 window.__ModuleLoader__.load({
-  id: '@dsh-multipool/plugin-client',
+  id: 'dsh-multipool',
   factory(require) {
     const React = require('react')
     const core = require('./dist/index.js')

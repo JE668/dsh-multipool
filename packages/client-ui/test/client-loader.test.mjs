@@ -27,7 +27,7 @@ function factory() {
 }
 
 test('loads one lazy factory named after the package', () => {
-  assert.equal(captured.id, '@dsh-multipool/plugin-client')
+  assert.equal(captured.id, 'dsh-multipool')
 })
 
 test('registers the icon under sidebar.panellist through an effect', () => {
