@@ -36,8 +36,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "coverage": "pnpm --filter @dsh-multipool/core coverage",
-    "lint": "pnpm -r lint",
-    "prepare": "pnpm -r build"
+    "lint": "pnpm -r lint"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
