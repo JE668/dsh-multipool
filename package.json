@@ -1,7 +1,6 @@
 {
   "name": "dsh-multipool",
   "version": "0.0.2-rc.3",
-  "private": true,
   "type": "module",
   "packageManager": "pnpm@12.18.0",
   "description": "dsh-multipool: one DSH bundle. Host half schedules AMD Radeon Cloud keys, browser half puts the pool on the left sidebar.",
@@ -17,7 +16,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "packages/*/dist",
+    "packages/core/dist",
+    "packages/plugin-dsh/dist",
+    "packages/client-ui/dist",
     "packages/client-ui/client.js",
     "cordis.patch.yml"
   ],
@@ -35,11 +36,18 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "coverage": "pnpm --filter @dsh-multipool/core coverage",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "prepare": "pnpm -r build"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0",
     "tsx": "^4.23.15"
+  },
+  "dependencies": {
+    "@dsh-multipool/core": "file:packages/core",
+    "@dsh-multipool/plugin-client": "file:packages/client-ui",
+    "@dsh-multipool/plugin-dsh": "file:packages/plugin-dsh"
   }
 }

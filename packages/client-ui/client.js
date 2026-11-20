@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
   id: '@dsh-multipool/plugin-client',
   factory(require) {
     const React = require('react')
-    const core = require('@dsh-multipool/plugin-client')
+    const core = require('./dist/index.js')
     const CHANNEL = '@dsh-multipool/plugin-client/view'
     function emptyView() {
       return core.iconViewOf({

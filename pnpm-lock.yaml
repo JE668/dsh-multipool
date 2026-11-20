@@ -165,7 +165,20 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@dsh-multipool/core':
+        specifier: file:packages/core
+        version: link:packages/core
+      '@dsh-multipool/plugin-client':
+        specifier: file:packages/client-ui
+        version: link:packages/client-ui
+      '@dsh-multipool/plugin-dsh':
+        specifier: file:packages/plugin-dsh
+        version: link:packages/plugin-dsh
     devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -179,7 +192,7 @@ importers:
   packages/client-ui:
     dependencies:
       '@dsh-multipool/core':
-        specifier: workspace:*
+        specifier: file:../core
         version: link:../core
     devDependencies:
       '@types/node':
@@ -210,10 +223,10 @@ importers:
   packages/plugin-dsh:
     dependencies:
       '@dsh-multipool/core':
-        specifier: workspace:*
+        specifier: file:../core
         version: link:../core
       '@dsh-multipool/plugin-client':
-        specifier: workspace:*
+        specifier: file:../client-ui
         version: link:../client-ui
     devDependencies:
       '@types/node':
