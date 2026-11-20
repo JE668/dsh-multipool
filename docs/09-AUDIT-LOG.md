@@ -254,6 +254,69 @@ export const VERSION = '…'
 
 按这三条绑之后，跨文件章节引用 104 处全部命中，悬空 0。
 
+### 6.4 上游实测与文档不符的地方（2026-11-20）
+
+doc 转到 live 端点的几步里，有两条 §1.3 / §1.6 的说法被真响应打了折扣。
+这里把它们照实记下来，**原文不动**：文档写的是官方文档怎么说，这一节写的是我们真看到了什么。
+两者都不是「错」，但读者必须知道哪一条已经被自己的眼睛过了一遍。
+
+#### 6.4.1 `GET /v1/usage` 的 200 响应里没有 `X-RateLimit-*`
+
+带真实 `rc-` Key 请求 `GET https://developer.amd.com.cn/radeon/api/v1/usage?include_recent=true`，
+得到 `HTTP/2 200`，响应头**共 6 个**，逐个是：
+
+| 头 | 值的样子 |
+|---|---|
+| `date` | RFC 1123 时间 |
+| `content-type` | `application/json` |
+| `server` | `nginx` |
+| `vary` | `Accept-Encoding` |
+| `x-cloud-trace-context` | 十六进制串 `/` 数字 `;o=1` |
+| `x-trace-id` | 与上面 trace 段同值 |
+
+**没有** `X-RateLimit-Limit-User-RPM`、**没有** `X-RateLimit-Remaining-User-RPM`、**没有** `X-RateLimit-Reset`，
+也没有任何 `X-RateLimit-*User-Daily-USD`。
+
+这不等于 `docs/02` §1.3 写错了。§1.3 的原文是「每次**成功调用**都会在响应头里带上当前计数」，
+而 `/v1/usage` 是**查询用量的那一次调用**，不是「成功调用」所指的业务调用。
+体面的读法是：用量端点的职责在 body 里把数字给你，头部那七个是 `/v1/chat/completions` 的附带品。
+
+**assume（未核实）**：七个 `X-RateLimit-*` 头的真身出现在 `/v1/chat/completions` 的 200 响应上。
+这一条本轮**没有**去证：证它要发一次真的补全请求，即要花用户的 pts。用户未授权花额度，我不做。
+
+对代码的约束（无论上面那条 assume 最后是否成立，都成立）：
+
+- 读配额数字**只能**读两处——`/v1/usage` 的 body，或业务调用响应头里的 `X-RateLimit-*`；
+- **不能**假定 `UsageResult` 里能顺带捞到头信息。`amd-usage.ts` 现在只解析 body，这是对的；
+- 若要落「响应头优先于 body」的规则（docs/04 §9.2 的意思），落点只能是 chat 那条路径的响应处理，
+  不能在 usage 轮询里假装自己拿到了头。
+
+#### 6.4.2 `rpm_limit` 实测是 20，`docs/02` §1.6 的示例写的是 30
+
+`docs/02` §1.6 的 JSON 示例里 `rpm_limit: 30`、`daily_cost_limit_usd: 10`，本机实测是 `rpm_limit: 20`、
+`daily_cost_limit_usd: 1`。**两者不矛盾**：§1.6 的示例本就是「一个账号的样子」，且官方原话是
+「不同账号的限额不同……请从这个接口读取你自己的限额，不要假设」。实测 20 恰好与 `catalog/limits.json`
+的 `limits.rpmAccount: 20`、`docs/04` §2.2 的 `min(20,30)` 一致——说明那两处当初取的是保守值，不是拍脑袋。
+
+派生的后果值得记一句：`assumedExternalClients` 假设的「外部客户端」在本机这台机器上未必存在，
+但它是**保守系数**不是**测量值**，20 × 0.85 ÷ 1.5 = 11 仍然是「假设值」，标签不该从 `assume` 动。
+
+#### 6.4.3 怎么复核这一节
+
+一条请求、只看头名、不打印任何值、不打印 body：
+
+```sh
+curl -sS -o /dev/null -D - \
+  -H "Authorization: Bearer $AMD_API_KEY" \
+  'https://developer.amd.com.cn/radeon/api/v1/usage?include_recent=true' \
+  | grep -i '^x-ratelimit-'
+```
+
+- 有输出 → 这一节过时了，回到 §1.3，把头名补全；
+- 无输出 → 与本节一致，§1.3 的原文仍只当「官方文档怎么说」读。
+
+body 里有 `organization_id`、`project_id` 和账号用量，**不要**贴进仓库、不要粘进对话。
+
 ## 7. 每次改动后的最小复核
 
 ```bash
