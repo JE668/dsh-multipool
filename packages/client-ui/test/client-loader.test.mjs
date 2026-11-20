@@ -30,49 +30,67 @@ function factory() {
   })
 }
 
+function registrar() {
+  // One stub per apply(): the drawer registers twice now (the rail icon and the panel behind it),
+  // so a single shared variable would let the second registration overwrite the first.
+  const plugin = factory()
+  const seen = []
+  const components = []
+  const ctx = {
+    slots: {
+      inject(name, fn) {
+        seen.push(['inject', name])
+        fn()
+      },
+      register(owner, comp) {
+        seen.push(['register', owner.name, owner.id, owner.key, owner.label])
+        components.push({ owner, comp })
+        return () => {}
+      },
+    },
+    effect(fn) {
+      seen.push(['effect'])
+      return fn()
+    },
+  }
+  plugin.apply(ctx)
+  const componentOf = (slot) => components.filter((c) => c.owner.name === slot).map((c) => c.comp)
+  return { plugin, seen, componentOf }
+}
+
 test('loads one lazy factory named after the package', () => {
   assert.equal(captured.id, 'dsh-multipool')
 })
 
 test('registers the icon under sidebar.panellist through an effect', () => {
-  const plugin = factory()
-  const calls = []
-  const ctx = {
-    slots: {
-      inject(name, fn) {
-        calls.push(['inject', name])
-        fn()
-      },
-      register(owner) {
-        calls.push(['register', owner.name, owner.id])
-        return () => {}
-      },
-    },
-    effect(fn) {
-      calls.push(['effect'])
-      return fn()
-    },
-  }
-  plugin.apply(ctx)
-  assert.deepEqual(calls[0], ['inject', 'sidebar.panellist'])
-  assert.deepEqual(calls[1], ['effect'])
-  assert.deepEqual(calls[2], ['register', 'sidebar.panellist', 'dsh-multipool'])
+  const { plugin, seen } = registrar()
+  assert.deepEqual(seen[0], ['inject', 'sidebar.panellist'])
+  assert.deepEqual(seen[1], ['effect'])
+  assert.deepEqual(seen[2], ['register', 'sidebar.panellist', 'dsh-multipool', undefined, 'DSH Multipool'])
   assert.deepEqual(plugin.inject, ['slots'])
 })
 
+test('the icon and its panel share one id, or the click lands nowhere', () => {
+  // sidebar README: the same id addresses the main keyed slot. layout looks the row up as
+  // entriesOfSlot('main').find(e => e.options.key === id) -- an icon alone selects itself onto
+  // nothing, which is the grey dot a fresh install used to see.
+  const { seen } = registrar()
+  assert.deepEqual(seen[3], ['inject', 'main'])
+  const iconRow = seen.find((c) => c[0] === 'register' && c[1] === 'sidebar.panellist')
+  const mainRow = seen.find((c) => c[0] === 'register' && c[1] === 'main')
+  assert.ok(iconRow !== undefined && mainRow !== undefined)
+  assert.equal(mainRow[3], iconRow[2])
+})
+
+function mounted() {
+  const { plugin, componentOf } = registrar()
+  return { plugin, pick: (slot) => componentOf(slot)[0], componentOf }
+}
+
 test('paints grey with three dashes when no host channel exists', () => {
   delete globalThis.window['@dsh-multipool/plugin-client/view']
-  const plugin = factory()
-  let component = null
-  const ctx = {
-    slots: {
-      inject(name, fn) { fn() },
-      register(owner, comp) { component = comp },
-    },
-    effect(fn) { fn() },
-  }
-  plugin.apply(ctx)
-  const tree = component({ size: 34, active: false })
+  const { pick } = mounted()
+  const tree = pick('sidebar.panellist')({ size: 34, active: false })
   const lines = tree.props.title.split('\n')
   assert.equal(lines.length, 3)
   // No host to ask: dashes, not the 0/0 that "configured nothing" would print.
@@ -83,17 +101,6 @@ test('paints grey with three dashes when no host channel exists', () => {
 })
 
 test('still prints 0/0 once the host answers with an empty pool', () => {
-  const plugin = factory()
-  let component = null
-  const ctx = {
-    slots: {
-      inject() {},
-      register(owner, comp) { component = comp },
-    },
-    effect(fn) { fn() },
-  }
-  plugin.apply(ctx)
-
   const answered = core.iconViewOf({
     snapshot: core.emptySnapshot(),
     budget: { admitRpm: 0, sources: [] },

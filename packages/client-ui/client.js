@@ -228,12 +228,64 @@ window.__ModuleLoader__.load({
       )
     }
 
+    var PANEL_LABEL = 'DSH Multipool'
+
+    /**
+     * The main area, once the rail icon has been clicked.
+     *
+     * This task (B1) only promises the route: click, land, close, and nothing left over after a
+     * disable. It deliberately draws no numbers, because there are none to draw yet -- the
+     * account list, the RPM budget and the pts reading all arrive with their own task, and a
+     * placeholder "0" here would be the same invented zero docs/05 section 2.3 and U-06 rule out
+     * in the tooltip. So it says the one true thing it knows and stops.
+     */
+    function MultiPoolPanel() {
+      const styles = {
+        root: {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          padding: '24px 20px',
+          color: 'var(--dsw-alias-label-primary)',
+          fontSize: 13,
+          lineHeight: '20px',
+          maxWidth: 520,
+        },
+        title: {
+          fontSize: 15,
+          fontWeight: 600,
+        },
+        body: {
+          color: 'var(--dsw-alias-label-secondary)',
+        },
+      }
+      return React.createElement(
+        'div',
+        { style: styles.root, 'data-multipool-panel': 'true' },
+        React.createElement('div', { style: styles.title }, 'AMD \u8d26\u53f7\u6c60'),
+        React.createElement(
+          'div',
+          { style: styles.body },
+          '\u672c\u673a\u8fd8\u6ca1\u6709\u8bfb\u5230\u4efb\u4f55\u8d26\u53f7\u3002\u6dfb\u52a0\u4e00\u4e2a AMD Token Factory \u7684 API Key \u4e4b\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u8d26\u53f7\u7684\u53d6\u7528\u72b6\u6001\u4e0e\u4f59\u91cf\u3002',
+        ),
+      )
+    }
+
     return {
       // docs/05 section 2: inject so the slot owner can call us again after a remount, and
       // register inside ctx.effect so disabling the plugin unregisters instead of leaving a
       // ghost behind for the next enable to paint over (06 T-2-b DoD).
       inject: ['slots'],
       apply(ctx) {
+        // The icon and the panel are one feature, not two: sidebar's README, the "global panel entry" section,
+        // says a sidebar id addresses the main keyed slot's entry of that same id, and layout
+        // looks the row up as entriesOfSlot('main').find(e => e.options.key === id). An icon
+        // registered alone therefore paints a row that selects itself and lands on nothing --
+        // which is exactly the grey, unclickable dot a fresh install used to show.
+        //
+        // Both live inside their own ctx.effect so the pair unregisters together. Layout's
+        // retainMainPanels is subscribed to 'main', so dropping the panel hands the main area
+        // back to 'conversation' instead of leaving an empty keyed cell behind.
         ctx.slots.inject('sidebar.panellist', () =>
           ctx.effect(() =>
             ctx.slots.register(
@@ -241,8 +293,21 @@ window.__ModuleLoader__.load({
                 name: 'sidebar.panellist',
                 id: 'dsh-multipool',
                 order: 30,
+                label: PANEL_LABEL,
               },
               SidebarIcon,
+            ),
+          ),
+        )
+        ctx.slots.inject('main', () =>
+          ctx.effect(() =>
+            ctx.slots.register(
+              {
+                name: 'main',
+                key: 'dsh-multipool',
+                label: PANEL_LABEL,
+              },
+              MultiPoolPanel,
             ),
           ),
         )
