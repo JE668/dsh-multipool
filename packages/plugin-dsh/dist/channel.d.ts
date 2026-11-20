@@ -37,9 +37,16 @@ export interface IconBudget {
     readonly admitRpm: number;
     readonly sources: readonly string[];
 }
-/** Narrow seam over the global object, so a test can hand in a bare one. */
+/**
+ * Narrow seam over the global object, so a test can hand in a bare one.
+ *
+ * Both members are plain property assignment on purpose: the host process has no `window`, and
+ * `globalThis` has no `setProperty` -- the first install died on `target.setProperty is not a
+ * function` for assuming one. The browser half finds the key by reading `window[CHANNEL]`, so a
+ * property that is simply there is what it needs; no method has to be invented to put it there.
+ */
 export interface ChannelTarget {
-    readonly setProperty: (key: string, value: unknown) => void;
+    readonly write: (key: string, value: unknown) => void;
 }
 export interface PublishedView {
     readonly snapshot: Snapshot;

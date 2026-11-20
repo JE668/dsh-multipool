@@ -52,10 +52,27 @@ export interface IconBudget {
   readonly sources: readonly string[]
 }
 
-/** Narrow seam over the global object, so a test can hand in a bare one. */
+/**
+ * Narrow seam over the global object, so a test can hand in a bare one.
+ *
+ * Both members are plain property assignment on purpose: the host process has no `window`, and
+ * `globalThis` has no `setProperty` -- the first install died on `target.setProperty is not a
+ * function` for assuming one. The browser half finds the key by reading `window[CHANNEL]`, so a
+ * property that is simply there is what it needs; no method has to be invented to put it there.
+ */
 export interface ChannelTarget {
-  readonly setProperty: (key: string, value: unknown) => void
+  readonly write: (key: string, value: unknown) => void
 }
+
+/** The real global object, addressed as `ChannelTarget`. */
+function globalTarget(): ChannelTarget {
+  return {
+    write(key: string, value: unknown): void {
+      ;(globalThis as unknown as Record<string, unknown>)[key] = value
+    },
+  }
+}
+
 
 export interface PublishedView {
   readonly snapshot: Snapshot
@@ -116,9 +133,7 @@ export function buildPublishedView(
  * demand.
  */
 export function openChannel(options: OpenChannelOptions): ChannelHandle {
-  const target: ChannelTarget = options.target === undefined
-    ? (globalThis as unknown as ChannelTarget)
-    : options.target
+  const target: ChannelTarget = options.target === undefined ? globalTarget() : options.target
   const pointsProviderId: ProviderId | null = options.pointsProviderId === undefined
     ? null
     : options.pointsProviderId
@@ -146,7 +161,7 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
     },
   }
 
-  target.setProperty(CHANNEL_KEY, channel)
+  target.write(CHANNEL_KEY, channel)
 
   return {
     publish(): PublishedView {
@@ -168,7 +183,7 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
     close(): void {
       closed = true
       subscribers.clear()
-      target.setProperty(CHANNEL_KEY, undefined)
+      target.write(CHANNEL_KEY, undefined)
       last = null
     },
   }

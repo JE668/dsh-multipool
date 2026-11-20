@@ -38,7 +38,7 @@ function sourceOf(accounts: readonly Account[], events: readonly MetricsEvent[] 
 
 class FakeWindow implements ChannelTarget {
   private bag: Record<string, unknown> = {}
-  setProperty(key: string, value: unknown): void {
+  write(key: string, value: unknown): void {
     this.bag[key] = value
   }
   read(key: string): unknown {
@@ -133,5 +133,18 @@ describe('channel', () => {
     handle.close()
     expect(win.read(CHANNEL_KEY)).toBeUndefined()
     expect(handle.isPublished()).toBe(false)
+  })
+
+  it('defaults to the global object, where the page actually looks for it', () => {
+    // No target: the install path the bundle takes in a real profile. globalThis is not a
+    // window and has no setProperty -- a fake that only the test can construct would have
+    // passed while the real one threw, which is exactly what happened once.
+    const handle = openChannel({ source: sourceOf([acct('amd', 'AMD-A', 'available')]), budget: BUDGET })
+    expect('setProperty' in globalThis).toBe(false)
+    const channel = (globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY] as { view: () => IconView }
+    expect(typeof channel.view).toBe('function')
+    expect(channel.view().badge).toBe('1/1')
+    handle.close()
+    expect((globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
   })
 })

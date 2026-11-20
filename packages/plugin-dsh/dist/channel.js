@@ -17,6 +17,15 @@ import { buildSnapshot, PROVIDER_ORDER, serializeSnapshot, } from './vendor/core
 import { iconViewOf } from './vendor/client-ui/index.js';
 /** The key the browser half reads. Must match CHANNEL in packages/client-ui/client.js. */
 export const CHANNEL_KEY = '@dsh-multipool/plugin-client/view';
+/** The real global object, addressed as `ChannelTarget`. */
+function globalTarget() {
+    return {
+        write(key, value) {
+            ;
+            globalThis[key] = value;
+        },
+    };
+}
 /** republish() before publish() has nothing to send, and a silent empty send reads as a bug. */
 const NO_SUBSCRIBERS = 'publish() has not run yet; there is no view to re-send';
 export function buildPublishedView(source, budget, pointsProviderId) {
@@ -42,9 +51,7 @@ export function buildPublishedView(source, budget, pointsProviderId) {
  * demand.
  */
 export function openChannel(options) {
-    const target = options.target === undefined
-        ? globalThis
-        : options.target;
+    const target = options.target === undefined ? globalTarget() : options.target;
     const pointsProviderId = options.pointsProviderId === undefined
         ? null
         : options.pointsProviderId;
@@ -71,7 +78,7 @@ export function openChannel(options) {
             };
         },
     };
-    target.setProperty(CHANNEL_KEY, channel);
+    target.write(CHANNEL_KEY, channel);
     return {
         publish() {
             const next = build();
@@ -97,7 +104,7 @@ export function openChannel(options) {
         close() {
             closed = true;
             subscribers.clear();
-            target.setProperty(CHANNEL_KEY, undefined);
+            target.write(CHANNEL_KEY, undefined);
             last = null;
         },
     };
