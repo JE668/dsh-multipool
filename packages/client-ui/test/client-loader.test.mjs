@@ -18,7 +18,9 @@ const core = await import('../dist/index.js')
 // ("missed the module table"), so handing it everything here would hide the failure this file
 // exists to catch -- it has to run against exactly what a page provides.
 const fakeReact = {
-  createElement: (type, props, kids) => ({ type, props, kids }),
+  // React spreads the remaining arguments, so the drawer's two-element call has to arrive as an
+  // array; reading them positionally as `kids` silently dropped the badge.
+  createElement: (type, props, ...kids) => ({ type, props, kids }),
   useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
   useEffect: () => {},
 }
@@ -87,7 +89,7 @@ function mounted() {
   return { plugin, pick: (slot) => componentOf(slot)[0], componentOf }
 }
 
-test('paints grey with three dashes when no host channel exists', () => {
+test('paints idle with three dashes when no host channel exists', () => {
   delete globalThis.window['@dsh-multipool/plugin-client/view']
   const { pick } = mounted()
   const tree = pick('sidebar.panellist')({ size: 34, active: false })
@@ -97,7 +99,16 @@ test('paints grey with three dashes when no host channel exists', () => {
   assert.ok(lines[0].includes('\u2014/\u2014'))
   assert.ok(!lines[0].includes('0/0'))
   assert.ok(lines[1].includes('host'))
-  assert.equal(tree.props['data-multipool-level'], 'grey')
+  // idle, not grey: grey is the host answering "no keys", and no host answered here.
+  assert.equal(tree.props['data-multipool-level'], 'idle')
+  // idle has to read as an outline: the badge is the second child, and a filled dot would make
+  // "nothing configured" and "switched off" one picture.
+  const [ring, badge] = tree.kids
+  assert.equal(ring.props.size, 34)
+  assert.equal(badge.props['data-multipool-badge'], 'idle')
+  assert.equal(badge.props.style.background, 'transparent')
+  assert.ok(badge.props.style.border.includes('solid'))
+  assert.ok(badge.props.style.border.includes('--dsw-alias-state-idle-primary'))
 })
 
 test('still prints 0/0 once the host answers with an empty pool', () => {

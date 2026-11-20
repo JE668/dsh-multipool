@@ -144,7 +144,7 @@ describe('attached: a host that never answered is not an empty pool', () => {
     const view = unattached(snap([]))
     expect(view.badge).toBe(DASH + '/' + DASH)
     expect(view.attached).toBe(false)
-    expect(view.level).toBe('grey')
+    expect(view.level).toBe('idle')
   })
 
   it('dashes the budget and says why, where a configured pool would print 0', () => {

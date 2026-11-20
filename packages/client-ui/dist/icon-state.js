@@ -35,10 +35,17 @@ function lineOf(provider) {
  * A pool with no keys is grey rather than red: red means "you asked for something and got
  * nothing", grey means "there is nothing to ask with yet". Painting an unconfigured install
  * red would be a claim about the upstream that we never made a request to support.
+ *
+ * `attached` splits the other half of the same question. Grey is a verdict: the host answered,
+ * and the answer was "no keys". A drawer that never heard from the host has reached no verdict
+ * at all, so it is idle, not grey. Merging the two would make "the plugin is switched off" and
+ * "you have not set a key yet" the same picture, which is the one thing a status light must
+ * never do.
  */
-export function iconLevelOf(overall, configured) {
+export function iconLevelOf(overall, configured, attached) {
+    const heard = attached === undefined ? true : attached;
     if (!configured || overall.total === 0)
-        return 'grey';
+        return heard ? 'grey' : 'idle';
     if (overall.available === 0)
         return 'red';
     if (overall.available < overall.total)
@@ -127,7 +134,7 @@ export function iconViewOf(input) {
     const points = pointsProvider === undefined
         ? '\u4eca\u65e5 pts ' + NO_VALUE
         : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel);
-    const level = iconLevelOf(snapshot.overall, snapshot.overall.configured);
+    const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached);
     const lines = {
         accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
         rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),

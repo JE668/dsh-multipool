@@ -8,8 +8,13 @@
 
 import type { AccountTally, ProviderId, ProviderSnapshot, Snapshot } from '@dsh-multipool/core'
 
-/** Green: every enabled account is usable. Yellow: some are, some are cooling. Red: none are. Grey: nothing configured. */
-export type IconLevel = 'green' | 'yellow' | 'red' | 'grey'
+/**
+ * Green: every enabled account is usable. Yellow: some are, some are cooling. Red: none are.
+ * Grey: nothing configured. Idle: this drawer has not heard from the host at all.
+ *
+ * idle is deliberately separate from grey -- see iconLevelOf.
+ */
+export type IconLevel = 'green' | 'yellow' | 'red' | 'grey' | 'idle'
 
 /** The five providers, in the order the tooltip lists them. */
 export const ICON_PROVIDER_ORDER: readonly ProviderId[] = ['amd', 'nim', 'sensenova', 'agnes', 'google']
@@ -60,9 +65,16 @@ function lineOf(provider: ProviderSnapshot): ProviderCountLine {
  * A pool with no keys is grey rather than red: red means "you asked for something and got
  * nothing", grey means "there is nothing to ask with yet". Painting an unconfigured install
  * red would be a claim about the upstream that we never made a request to support.
+ *
+ * `attached` splits the other half of the same question. Grey is a verdict: the host answered,
+ * and the answer was "no keys". A drawer that never heard from the host has reached no verdict
+ * at all, so it is idle, not grey. Merging the two would make "the plugin is switched off" and
+ * "you have not set a key yet" the same picture, which is the one thing a status light must
+ * never do.
  */
-export function iconLevelOf(overall: AccountTally, configured: boolean): IconLevel {
-  if (!configured || overall.total === 0) return 'grey'
+export function iconLevelOf(overall: AccountTally, configured: boolean, attached?: boolean): IconLevel {
+  const heard = attached === undefined ? true : attached
+  if (!configured || overall.total === 0) return heard ? 'grey' : 'idle'
   if (overall.available === 0) return 'red'
   if (overall.available < overall.total) return 'yellow'
   return 'green'
@@ -190,7 +202,7 @@ export function iconViewOf(input: IconViewInput): IconView {
   const points = pointsProvider === undefined
     ? '\u4eca\u65e5 pts ' + NO_VALUE
     : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
-  const level = iconLevelOf(snapshot.overall, snapshot.overall.configured)
+  const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached)
   const lines = {
     accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
     rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),

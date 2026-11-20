@@ -32,8 +32,9 @@ window.__ModuleLoader__.load({
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
 
-    function iconLevelOf(overall, configured) {
-      if (!configured || overall.total === 0) return 'grey'
+    function iconLevelOf(overall, configured, attached) {
+      var heard = attached === undefined ? true : attached
+      if (!configured || overall.total === 0) return heard ? 'grey' : 'idle'
       if (overall.available === 0) return 'red'
       if (overall.available < overall.total) return 'yellow'
       return 'green'
@@ -80,7 +81,7 @@ window.__ModuleLoader__.load({
       var points = pointsProvider === undefined || pointsProvider === null
         ? '\u4eca\u65e5 pts ' + NO_VALUE
         : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
-      var level = iconLevelOf(snapshot.overall, snapshot.overall.configured)
+      var level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached)
       var lines = {
         accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
         rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
@@ -125,6 +126,7 @@ window.__ModuleLoader__.load({
       yellow: '--dsw-alias-state-warn-primary',
       red: '--dsw-alias-state-error-primary',
       grey: '--dsw-alias-state-idle-primary',
+      idle: '--dsw-alias-state-idle-primary',
     }
 
     function levelColor(level) {
@@ -172,34 +174,64 @@ window.__ModuleLoader__.load({
 
       // The rail has room for the glyph and nothing else; a 24px slot leaves a 6px corner for a dot.
       const small = props.size <= 20
+      // idle is "never heard from the host", not "no keys": it wears the ring as an outline
+      // instead of filling a dot, so switched-off and unconfigured stop looking the same.
+      const idle = view.level === 'idle'
       const badge = React.createElement(
         'span',
         {
           'data-multipool-badge': view.level,
           'aria-hidden': true,
           style: small
-            ? {
-                position: 'absolute',
-                right: -1,
-                bottom: -1,
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                background: levelColor(view.level),
-              }
-            : {
-                position: 'absolute',
-                right: -4,
-                bottom: -4,
-                padding: '0 2px',
-                borderRadius: 4,
-                background: levelColor(view.level),
-                color: 'var(--dsw-alias-bg-base)',
-                fontSize: 9,
-                fontWeight: 600,
-                lineHeight: '12px',
-                letterSpacing: 0,
-              },
+            ? idle
+              ? {
+                  position: 'absolute',
+                  right: -1,
+                  bottom: -1,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  boxSizing: 'border-box',
+                  border: '1.5px solid ' + levelColor(view.level),
+                  background: 'transparent',
+                }
+              : {
+                  position: 'absolute',
+                  right: -1,
+                  bottom: -1,
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  background: levelColor(view.level),
+                }
+            : idle
+              ? {
+                  position: 'absolute',
+                  right: -4,
+                  bottom: -4,
+                  padding: '0 2px',
+                  borderRadius: 4,
+                  boxSizing: 'border-box',
+                  border: '1px solid ' + levelColor(view.level),
+                  background: 'transparent',
+                  color: levelColor(view.level),
+                  fontSize: 9,
+                  fontWeight: 600,
+                  lineHeight: '12px',
+                }
+              : {
+                  position: 'absolute',
+                  right: -4,
+                  bottom: -4,
+                  padding: '0 2px',
+                  borderRadius: 4,
+                  background: levelColor(view.level),
+                  color: 'var(--dsw-alias-bg-base)',
+                  fontSize: 9,
+                  fontWeight: 600,
+                  lineHeight: '12px',
+                  letterSpacing: 0,
+                },
         },
         small ? null : view.badge,
       )
@@ -312,6 +344,12 @@ window.__ModuleLoader__.load({
           ),
         )
       },
+      // Held out to the tests so icon-state.test.ts can put this copy and the TypeScript one
+      // on the same inputs. Module-loader does not require this module to implement a fixed
+      // interface; these are no more visible to the page than the functions themselves were.
+      iconLevelOf: iconLevelOf,
+      iconViewOf: iconViewOf,
+      emptyView: emptyView,
     }
   },
 })
