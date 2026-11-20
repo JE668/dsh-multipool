@@ -12,8 +12,10 @@ function pkg(relative: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(repoRoot, relative), 'utf8')) as Record<string, unknown>
 }
 
-describe('the workspace is one DSH bundle', () => {
+describe('the workspace is one DSH bundle', async () => {
   const root = pkg('package.json')
+    // the host half's built entry: what a DSH profile actually loads as a plugin
+    const host = (await import('../dist/index.js')) as Record<string, unknown>
   const plugin = pkg('packages/plugin-dsh/package.json')
   const client = pkg('packages/client-ui/package.json')
 
@@ -54,5 +56,13 @@ describe('the workspace is one DSH bundle', () => {
     const source = readFileSync(join(repoRoot, 'packages/client-ui/client.js'), 'utf8')
     const declared = /__ModuleLoader__\.load\(\{\s*id:\s*'([^']+)'/.exec(source)
     expect(declared?.[1]).toBe(root.name)
+  })
+
+  it('does not wait on a service that only the browser half provides', () => {
+    // `slots` is provided by dsh-cordis-client-runner, which runs in the page, not in this
+    // process. Declaring it here parks the entry in "pending (waiting for service: slots)"
+    // forever: the host fiber never becomes ready, so apply() never runs and the icon is
+    // never registered. apply() reads ctx.effect and nothing else, so it waits on nothing.
+    expect(host.inject).toBeUndefined()
   })
 })

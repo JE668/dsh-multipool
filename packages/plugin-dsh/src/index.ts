@@ -7,9 +7,10 @@
  *
  * Entry points for the DSH loader:
  *
- * - `inject` names the services `apply` reads. Only `slots` for now -- the channel publishes the
- *   icon's view and does not touch the provider registry, so declaring more would only make the
- *   bundle refuse to load in a profile that lacks them.
+ * - No `inject` on purpose. `slots` lives in the browser half (dsh-cordis-client-runner), so
+ *   naming it here parked this entry in "pending (waiting for service: slots)" forever -- the
+ *   host fiber would never see it, and the icon never got a chance to ask for the sidebar slot.
+ *   `apply` reads nothing but `ctx.effect`, which every context has.
  * - `apply(ctx)` opens the channel inside `ctx.effect`, so disabling the plugin disposes it and
  *   leaves no `window` key behind, and publishing stays pull-based: `apply` opens, it does not
  *   publish. Nothing here schedules a timer of its own (docs/05 section 4.3).
@@ -18,9 +19,6 @@
 import { openChannel } from './channel.js'
 
 export const VERSION = '0.0.2-rc.3'
-
-/** DSH services this bundle reads. */
-export const inject = ['slots'] as const
 
 /** The channel's lifetime is the plugin's lifetime. */
 export function apply(ctx: {
