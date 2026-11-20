@@ -13,6 +13,10 @@ globalThis.window = {
 await import('../client.js')
 
 const core = await import('../dist/index.js')
+// Everything this drawer is allowed to ask for: React, and nothing else. core stays out of the
+// answer on purpose. A bundle that requires a second module is one client-modules cannot serve
+// ("missed the module table"), so handing it everything here would hide the failure this file
+// exists to catch -- it has to run against exactly what a page provides.
 const fakeReact = {
   createElement: (type, props, kids) => ({ type, props, kids }),
   useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
@@ -22,7 +26,7 @@ const fakeReact = {
 function factory() {
   return captured.factory((name) => {
     if (name === 'react') return fakeReact
-    return core
+    throw new Error(`client.js required "${name}"; the page serves only react`)
   })
 }
 

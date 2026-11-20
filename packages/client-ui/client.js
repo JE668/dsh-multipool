@@ -1,8 +1,15 @@
 /**
  * The browser half of dsh-multipool, as DSH loads it (dsh-doc references/ui-plugin.md).
  *
- * The module loader gets one lazy factory whose id equals the package name. React comes from the
- * page's module table, so this file requires it rather than bundling a second copy.
+ * The module loader gets one lazy factory whose id equals the package name. React is the one
+ * thing this file requires: it comes from the page's module table and bundling a second copy
+ * would break hooks exactly as it would anywhere else.
+ *
+ * Nothing else may be required. client-modules treats a bundle as one opaque file -- a relative
+ * require primes no id, and a bare one is served by nobody -- so importing ./dist/index.js from
+ * here fails with "missed the module table" on every enable. The arithmetic below is therefore
+ * spelled out instead of imported, and icon-state.test.ts holds the two copies to one answer over
+ * a shared table of snapshots.
  *
  * The host half runs in a different process and cannot reach that table, so it hands its view over
  * on window instead:
@@ -20,11 +27,92 @@ window.__ModuleLoader__.load({
   id: 'dsh-multipool',
   factory(require) {
     const React = require('react')
-    const core = require('./dist/index.js')
     const CHANNEL = '@dsh-multipool/plugin-client/view'
+    var NO_VALUE = '\u2014'
+    var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
+    var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
+
+    function iconLevelOf(overall, configured) {
+      if (!configured || overall.total === 0) return 'grey'
+      if (overall.available === 0) return 'red'
+      if (overall.available < overall.total) return 'yellow'
+      return 'green'
+    }
+    function accountsLine(snapshot) {
+      var parts = ICON_PROVIDER_ORDER.map(function (providerId) {
+        var found = snapshot.providers.find(function (p) {
+          return p.providerId === providerId
+        })
+        if (found === undefined || found.tally.total === 0) return PROVIDER_SHORT_LABELS[providerId] + ' ' + NO_VALUE
+        return PROVIDER_SHORT_LABELS[providerId] + ' ' + String(found.tally.available)
+      })
+      return '\u53ef\u7528\u8d26\u53f7 ' + String(snapshot.overall.available) + '/' + String(snapshot.overall.total)
+        + '\uff08' + parts.join(' \u00b7 ') + '\uff09'
+    }
+    function rpmLine(budget) {
+      var source = budget.sources[0]
+      return '\u5168\u5c40 RPM ' + String(budget.admitRpm) + '\uff08' + (source === undefined ? NO_VALUE : source) + '\uff09'
+    }
+    function rpmLineUnattached() {
+      return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08host \u672a\u8fd0\u884c\uff09'
+    }
+    function pointsLine(provider, fetchedAtLabel) {
+      var used = provider.dailyUsedPts === undefined ? undefined : provider.dailyUsedPts.value
+      var limit = provider.dailyLimitPts === undefined ? undefined : provider.dailyLimitPts.value
+      if (used === null || used === undefined || limit === null || limit === undefined) {
+        var reason = provider.usageUnavailableReason === undefined ? '\u65e0\u7528\u91cf\u7aef\u70b9'
+          : provider.usageUnavailableReason === 'no-endpoint' ? '\u65e0\u7528\u91cf\u7aef\u70b9'
+            : '\u4e0a\u6e38\u672a\u8fd4\u56de'
+        return '\u4eca\u65e5 pts ' + NO_VALUE + '\uff08' + reason + '\uff09'
+      }
+      var base = '\u4eca\u65e5 pts ' + String(used) + ' / ' + String(limit)
+      return fetchedAtLabel === null ? base : base + '\uff08\u622a\u81f3 ' + fetchedAtLabel + '\uff09'
+    }
+    function iconViewOf(input) {
+      var snapshot = input.snapshot
+      var attached = input.attached === undefined ? true : input.attached
+      var counts = { available: snapshot.overall.available, total: snapshot.overall.total }
+      var pointsProvider = input.pointsProviderId === null
+        ? undefined
+        : snapshot.providers.find(function (p) {
+          return p.providerId === input.pointsProviderId
+        })
+      var points = pointsProvider === undefined || pointsProvider === null
+        ? '\u4eca\u65e5 pts ' + NO_VALUE
+        : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
+      var level = iconLevelOf(snapshot.overall, snapshot.overall.configured)
+      var lines = {
+        accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
+        rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
+        points: attached ? points : '\u4eca\u65e5 pts ' + NO_VALUE,
+      }
+      return {
+        level: level,
+        counts: counts,
+        attached: attached,
+        badge: attached ? String(counts.available) + '/' + String(counts.total) : NO_VALUE + '/' + NO_VALUE,
+        lines: lines,
+      }
+    }
     function emptyView() {
-      return core.iconViewOf({
-        snapshot: core.emptySnapshot(),
+      return iconViewOf({
+        snapshot: {
+          generatedAtMs: 0,
+          accounts: [],
+          providers: ICON_PROVIDER_ORDER.map(function (providerId) {
+            return {
+              providerId: providerId,
+              tally: { available: 0, total: 0, providerId: providerId, configured: false },
+              usageAvailable: false,
+              err429LastHour: 0,
+              err429ByKind: {},
+            }
+          }),
+          overall: { available: 0, total: 0, providerId: 'all', configured: false },
+          cooling: [],
+          last5m: { requests: 0, err429: 0, rate: null },
+          counters: { activeSessions: 0, queued: 0 },
+        },
         budget: { admitRpm: 0, sources: [] },
         pointsProviderId: null,
         attached: false,
