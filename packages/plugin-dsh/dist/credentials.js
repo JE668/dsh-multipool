@@ -95,8 +95,9 @@ export async function writeKeyStatus(context, key, ref = AMD_KEY_REF) {
     const seam = context.credentials;
     try {
         const saved = await saveAmdKey(seam, { ref, value: key });
-        // The rejection came from key-store, so a seam was there to be handed it; the state is still
-        // the read, which is what a form paints after refusing (usually absent, and not this guess).
+        // The refusal is key-store's own wording (docs/02 section 1.2), so a seam was there to be handed
+        // it; the state is still the read, which is what a form paints after a refusal, not a guess of
+        // absent made here.
         if (!saved.ok)
             return { status: await readKeyStatus(context, ref), message: saved.rejection.message };
     }
