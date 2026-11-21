@@ -137,7 +137,24 @@ function injectOf(
 ): () => void {
   const inject = ctx.inject
   if (typeof inject !== 'function') return () => undefined
-  return inject.call(ctx, names, callback)
+  // A body that threw is caught here, and only here.
+  //
+  // Both injections run from inside the effect app-cordis runs to load this entry. inject() resolves
+  // a *mock* when some of the names are absent, and a mock whose miss handler was not written yet
+  // throws -- even from a property read this file never asked about, which is how a TypeError on
+  // `target` took the whole entry down and the icon with it. The rule this file already states is
+  // that the plugin must activate on a DSH with no carrier and draw dashes there; a dashed icon is
+  // still an icon, but a throw is nothing at all, and the user sees the plugin disappear.
+  //
+  // Catching costs the route: where inject succeeds, handle() is registered and the icon answers.
+  // Where it throws, there was no route to be had anyway, and the icon answers the dash -- the same
+  // answer it gives on a DSH that predates connection. Silently, because a user cannot act on
+  // "your other service's mock was incomplete".
+  try {
+    return inject.call(ctx, names, callback)
+  } catch {
+    return () => undefined
+  }
 }
 
 /** The channel's lifetime is the plugin's lifetime. */

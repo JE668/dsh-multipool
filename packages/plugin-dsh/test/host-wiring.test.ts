@@ -109,6 +109,26 @@ describe('the host half asks the seam only when somebody is reading the answer',
     for (const dispose of disposers) dispose()
   })
 
+  it('activates when inject throws, which is what a half-resolved mock does', () => {
+    // The shape a real install took: connection exists in some module table and not in the one
+    // app-cordis asks, so inject() handed back a mock whose miss handler threw on any property read.
+    // Nothing in this file asked about the missing service -- it read the one it wanted -- and the
+    // entry still went down, taking the icon with it. A disabled plugin cannot draw dashes; this one
+    // has to.
+    const { context, effects, injections } = contextOf({ hasInject: true })
+    context.inject = (names: string[], _callback: (child: never) => void) => {
+      for (const name of names) injections.push(name)
+      throw new TypeError('target.setProperty is not a function')
+    }
+    expect(() => apply(context, { onKeyStatus: () => undefined })).not.toThrow()
+    const disposers = effects.map(effect => effect())
+    expect(injections).toEqual(['connection', 'credentials'])
+    // Opened anyway, and closed without a word.
+    expect(() => {
+      for (const dispose of disposers) dispose()
+    }).not.toThrow()
+  })
+
   it('still opens the channel on a context that cannot inject', () => {
     const { context, effects, injections, seam, served } = contextOf({ hasInject: false })
     apply(context, { onKeyStatus: () => undefined })
