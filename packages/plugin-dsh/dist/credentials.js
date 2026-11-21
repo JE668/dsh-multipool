@@ -52,6 +52,11 @@ export async function readKeyStatus(context, ref = AMD_KEY_REF) {
  * away, but a caller replacing the reader mid-flight would not, and that caller is what the shape is
  * for.
  *
+ * How many reads an edit costs: one set plus one unset is two notifications, so two reads -- not one
+ * per write, one per event, and the two are not the same number. Measured on 0.2.2-rc.5 with watch off
+ * (`docs/09-AUDIT-LOG.md` section 6.4.4), so the count comes from the provider's own notify, not from
+ * chokidar seeing the file it just wrote.
+ *
  * With no context `on` (a bare object in a test, an install whose context predates the event mixin), this
  * still reads once and returns; it just has nothing to listen to afterwards.
  */

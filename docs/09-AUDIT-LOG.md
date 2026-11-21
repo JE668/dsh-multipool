@@ -317,6 +317,44 @@ curl -sS -o /dev/null -D - \
 
 body 里有 `organization_id`、`project_id` 和账号用量，**不要**贴进仓库、不要粘进对话。
 
+#### 6.4.4 `credentials` 接缝的实测形状（2026-11-21）
+
+`docs/06` 的 T-2-e 一开始只是读 `@deepseek-ai/dsh-credentials` 与
+`@deepseek-ai/dsh-credentials-local` 的源码写下的假设。后来用 asar 把这两个包（连同
+`cordis`、`yaml`、`chokidar`、`readdirp`、`dsh-atomic-write`、`dsh-home-paths`、
+`dsh-launch-environment`、`dsh-brand`、`schemastery`、`cosmokit`）从**装在本机的 DSH.app**
+里抽到 `/tmp`，直接用这份编译产物 `new LocalCredentialProvider(...)` 跑了一遍真文件往返，
+下列四条从「源码里读到」变成「跑出来是这样的」。
+
+探测用的假文档写在 `mkdtemp` 的临时目录里、`mode: 0o600`、结构模仿真文档（`version: 1`；
+`refs` 下第一条上方有一段手写注释；另有一条别的插件的 ref；`records` 下一条 `grant`）。
+写进去的值是 `rc-` + 一个随机 uuid，**不是任何真 Key**。`~/.dsh/` 一次也没被读写。
+
+| 层 | `describe()` 返回的键 | 有没有预览 |
+|---|---|---|
+| `file`（`.credentials.yaml` 里真有） | `configured, masked, source, writable` | 有 |
+| `env`（继承进程环境） | `configured, source, writable` | 没有 |
+| `project-env` / `user-env`（`.env`） | `configured, source, writable` | 没有 |
+
+- `masked` 是**同长度**预览：假 Key `rc-probe-original` 17 个码点，预览也是 17 个。
+  把预览里的 `-` 换成 `~`、`•` 换成 `*` 之后，得到的是 17 个 `*`，**一个字符也没露**。
+  原因是 `maskCredential` 的规则「至少藏 8 个码点才露头」：这个假 Key 只藏得住 5 个
+  （17 − 3 位 `rc-` − 5 − 4），于是整串埋掉。真的 `rc-` + 32 字符会露头 8 位、藏 23 位，
+  但**这一条没有用真 Key 验过**，也不该用真 Key 去验。
+- `unset` 之后再 `describe`，只剩 `{configured: false, writable: true}`；`source` 和 `masked`
+  都不见了，所以「已删除」和「从没配过」在**返回形状上**长得一样，区分它们只能靠调用方
+  自己记着刚才做了什么。
+- **一次 set + 一次 unset 会发两次 `credentials/reference-updated`**，都在 `watch: false`
+  时发出——说明这两条来自 provider 自己的 `notifyUpdated`，不是 chokidar 看见文件变了。
+  ⇒ 订阅这个事件的读方，**每个写操作要重读一次，不是每次编辑重读一次**。
+  本插件的 `watchKeyStatus` 因此有一句「可能比写入次数多读一次」，而不是含糊的「随事件重读」。
+- **`unset` 会把该键上方的手写注释一并删掉**，同文件别的 ref 与 `records` 里的 `grant`
+  不受影响。这是 `deleteSectionEntry` 里显式 `map.commentBefore = null` 的行为（理由写在
+  `packages/plugin-dsh/src/credentials.ts` 的注释里），不是意外。对本插件的约束是：
+  插件只、并且只能读写 `AMD_API_KEY` 这一条；那条注释的归属是 DSH 或用户，不是本插件，
+  所以界面**不能**承诺「删掉 Key 后注释还在」，也**不做**替别的插件恢复注释的事。
+  这一条留在本节的意义只是：真发生的时候，知道是谁干的、以及不是 bug。
+
 ## 7. 每次改动后的最小复核
 
 ```bash
