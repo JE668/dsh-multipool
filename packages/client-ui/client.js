@@ -212,70 +212,26 @@ window.__ModuleLoader__.load({
 
       const title = view.lines.accounts + '\n' + view.lines.rpm + '\n' + view.lines.points
 
-      // The rail has room for the glyph and nothing else; a 24px slot leaves a 6px corner for a dot.
-      const small = props.size <= 20
-      // idle is "never heard from the host", not "no keys": it wears the ring as an outline
-      // instead of filling a dot, so switched-off and unconfigured stop looking the same.
-      const idle = view.level === 'idle'
+      // Sidebar renders this row at 16px expanded and 18px collapsed -- not the 24px that
+      // docs/05 section 2.1 draws, which is the slot rather than the prop. A threshold keyed on
+      // a 24px assumption therefore never fired, and every rail kept a bordered text box
+      // where docs/05 describes a dot. The corner keeps its fraction in the tooltip.
       const badge = React.createElement(
         'span',
         {
           'data-multipool-badge': view.level,
           'aria-hidden': true,
-          style: small
-            ? idle
-              ? {
-                  position: 'absolute',
-                  right: -1,
-                  bottom: -1,
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  boxSizing: 'border-box',
-                  border: '1.5px solid ' + levelColor(view.level),
-                  background: 'transparent',
-                }
-              : {
-                  position: 'absolute',
-                  right: -1,
-                  bottom: -1,
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  background: levelColor(view.level),
-                }
-            : idle
-              ? {
-                  position: 'absolute',
-                  right: -4,
-                  bottom: -4,
-                  padding: '0 2px',
-                  borderRadius: 4,
-                  boxSizing: 'border-box',
-                  border: '1px solid ' + levelColor(view.level),
-                  background: 'transparent',
-                  color: levelColor(view.level),
-                  fontSize: 9,
-                  fontWeight: 600,
-                  lineHeight: '12px',
-                }
-              : {
-                  position: 'absolute',
-                  right: -4,
-                  bottom: -4,
-                  padding: '0 2px',
-                  borderRadius: 4,
-                  background: levelColor(view.level),
-                  color: 'var(--dsw-alias-bg-base)',
-                  fontSize: 9,
-                  fontWeight: 600,
-                  lineHeight: '12px',
-                  letterSpacing: 0,
-                },
+          style: {
+            position: 'absolute',
+            right: -1,
+            bottom: -1,
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            background: levelColor(view.level),
+          },
         },
-        small ? null : view.badge,
       )
-
       return React.createElement(
         'span',
         {

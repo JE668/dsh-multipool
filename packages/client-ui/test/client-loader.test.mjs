@@ -102,14 +102,16 @@ test('paints idle with three dashes when no host channel exists', () => {
   assert.ok(lines[1].includes('host'))
   // idle, not grey: grey is the host answering "no keys", and no host answered here.
   assert.equal(tree.props['data-multipool-level'], 'idle')
-  // idle has to read as an outline: the badge is the second child, and a filled dot would make
-  // "nothing configured" and "switched off" one picture.
+  // The badge is the second child. It is a dot, not an outline: an outline here would add a
+  // third ring beside the two docs/05 section 2.1 already draws, and at the 16px and 18px
+  // sidebar actually passes there is no room for one anyway.
   const [ring, badge] = tree.kids
   assert.equal(ring.props.size, 34)
   assert.equal(badge.props['data-multipool-badge'], 'idle')
-  assert.equal(badge.props.style.background, 'transparent')
-  assert.ok(badge.props.style.border.includes('solid'))
-  assert.ok(badge.props.style.border.includes('--dsw-alias-state-idle-primary'))
+  assert.equal(badge.props.style.border, undefined)
+  assert.equal(badge.props.style.background, 'var(--dsw-alias-state-idle-primary)')
+  // A dot larger than a third of the glyph would swallow it at 16px.
+  assert.ok(badge.props.style.width < ring.props.size / 3 + 1)
 })
 
 test('a channel with no command() is a host too old, not a save that failed', async () => {
