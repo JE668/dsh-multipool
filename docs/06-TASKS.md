@@ -123,6 +123,29 @@
 - 空串拒写走 `unset`，不写 `''`；Key 不出现在任何日志、错误串、快照线格式里（`scrubSecrets` 已兜住）。
 - **验收**：U-04（日志无完整 Key）、C-02（`validateAmdKey` 在写盘前先拒）
 
+  已落地（`de2d7f6`）。三处与最初设想不同，按实现记账：
+
+  1. **跨进程那一跳不是 `ctx.credentials`**：浏览器半在另一个进程，`ctx.credentials.set` 它调不到。所以
+     页面不走凭据 API，而走 channel 上的 `command({name, key})`；`apply` 收到后转调 Host 侧的
+     `writeKeyStatus` / `clearKeyStatus`。凭据 API 只在 Host 这一侧被调用，与 03 的分工不矛盾。
+  2. **`command` 是 channel 的成员，不是 window 上的第二个 key**：`client.js` 只读一个
+     `CHANNEL_KEY`，第二个 key 等于给“两边必须同步”的约定再加一份。代价是页面必须先判断
+     `typeof ch.command === 'function'`；这不是额外的负担，本来就该防旧 Host。
+  3. **`KeyStatus` 不出界**：它的 `seam` 是四个方法的活动对象。`CommandOutcome.status` 改成扁平的
+     `KeyReading { present, layer? }`，`outcomeOf` 里显式丢弃 seam。**没有任何可调用对象跨进程**。
+- `HostOptions.acceptsWrites` 默认 `false`，且现在**故意**保持 `false`：设置页的保存按钮还不存在，
+  提前开等于对外承诺一条必然返回 `no credential service` 的写入路径。随 T-2-f 一起开。
+
+### T-2-f 设置页 AMD 组（写入口）`dep: T-2-e`
+- 独立设置页 `dsh-multipool-amd`（ADR-11），**不复用** `settings.plugin.item`（DSH 0.2.2-rc.3 没有）。
+- 字段一个：AMD Token Factory 的 API Key。存：`channel.command({name:'save', key})`；清：`{name:'forget'}`。
+- 保存前**只读**核对一次 `GET /v1/usage`：只读，不带 prompt，不消耗 pts，不是 02 §1 禁止的探针
+  （`assume`，等用户确认后才落 02）。
+- 红字拒绝（`validateAmdKey` 写盘前就拒，docs/02 §1.9）：`sk-开头的非 Token Factory 键`、Jupyter 实例域名。
+- 并发 / RPM 文案必须带 §号引用 docs/02 §1.1、§1.4；本地估算带 `L` 徽标、不与上游上限相减（docs/04 §9.2）。
+- 同一提交里把 `acceptsWrites` 置 `true`：写入口存在了，它才不是一条空承诺。
+- **验收**：C-01 ~ C-03、U-04
+
 ---
 
 ## 阶段 3 · BI 看板（AMD 数据先打通）`dep: T-2-a`
@@ -248,7 +271,7 @@ T-0-a ─┬──────────────────────�
 T-0-b ─┼─ T-1-a ─ T-1-b ─┬─ T-1-c ─ T-1-d           │
        └─────────────────┼─ T-1-e ─┬─ T-1-f ─ T-1-g ─ T-1-h
                          (T-1-e 需 T-1-b)
-T-1-h ─ T-2-a ─ T-2-b ─ T-2-c ─ T-2-d
+T-1-h ─ T-2-a ─ T-2-b ─ T-2-c ─ T-2-d ─ T-2-e ─ T-2-f
 T-2-a ─ T-3-a ─ T-3-b ─ T-3-c ─ T-3-d ─ T-3-e
 T-1-b ─ T-4-a ─┬─ T-4-b
                ├─ T-4-c
