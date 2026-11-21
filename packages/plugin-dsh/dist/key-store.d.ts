@@ -37,6 +37,15 @@ export type AmdKeyRef = (typeof AMD_KEY_REFS)[number];
  * Declared here instead of imported from @deepseek-ai/dsh-credentials so the plugin builds against
  * one repo, not against one DSH install's type package; a context that carries the service satisfies
  * this shape, and a test can satisfy it with an object instead of a profile on disk.
+ *
+ * The shape follows 0.2.2-rc.5's own implementation, not the abstract class: dsh-credentials
+ * declares these four and implements only the notify pair, so the argument list a caller can rely
+ * on is the one dsh-credentials-local/it writes. Two details came from reading it rather than from
+ * guessing. `masked` is optional because describe() only builds it for the file layer -- a key that
+ * arrived from the environment or a .env file is reported configured with no preview at all, and a
+ * required field would have made this plugin invent one (U-06). And a stored `''` cannot exist:
+ * parseRefs rejects an empty value at boot and set() rejects one at write, so "configured" here
+ * never means "configured to nothing" and no caller has to defend against it.
  */
 export interface CredentialSeam {
     resolve(ref: string): Promise<{
@@ -47,6 +56,8 @@ export interface CredentialSeam {
         readonly configured: boolean;
         readonly source?: string;
         readonly writable: boolean;
+        /** Same-length code-point preview, file layer only. Never for env / project-env / user-env. */
+        readonly masked?: string;
     }>;
     set(ref: string, value: string): Promise<void>;
     unset(ref: string): Promise<void>;

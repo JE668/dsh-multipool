@@ -113,6 +113,19 @@ describe('the seam is named, not guessed', () => {
     expect(AMD_KEY_REFS).toEqual(['AMD_API_KEY'])
   })
 
+  it('reads the layer from the answer, without borrowing a preview', async () => {
+    // 0.2.2-rc.5 builds `masked` for the file layer alone: a key from the environment or a .env
+    // file is reported configured with no preview at all. Either way the layer is the whole fact.
+    for (const layer of ['env', 'project-env', 'user-env'] as const) {
+      const seam = seamOf({ describe: async () => ({ configured: true, source: layer, writable: true }) })
+      await expect(describeKey(seam, 'AMD_API_KEY')).resolves.toEqual({ kind: 'configured', layer })
+    }
+    const fileLayer = seamOf({
+      describe: async () => ({ configured: true, source: 'file', writable: true, masked: 'rc-\u2022\u2022\u2022\u2022' }),
+    })
+    await expect(describeKey(fileLayer, 'AMD_API_KEY')).resolves.toEqual({ kind: 'configured', layer: 'file' })
+  })
+
   it('has no state that mixes configured and absent', () => {
     const states: KeyState[] = [
       { kind: 'configured', layer: 'file' },
