@@ -25,7 +25,7 @@
  */
 import { type KeyContext, type KeyStatus } from './credentials.js';
 import { channelSourceFrom } from './source.js';
-export declare const VERSION = "0.0.2-rc.3";
+export declare const VERSION = "0.0.2-rc.4";
 /** The icon prints this until a task computes the real account budget (04 section 2.2). */
 export declare const NO_BUDGET_SOURCES: readonly string[];
 export declare const NO_ADMIT_RPM = 0;
@@ -39,6 +39,13 @@ export interface HostOptions {
      * `credentials/reference-updated` that names this plugin's reference -- no other schedule exists.
      */
     readonly onKeyStatus?: (status: KeyStatus) => void;
+    /**
+     * Offer the write half to the page's command() (T-2-e). Off unless asked for.
+     *
+     * A host that takes no writes never resolves `credentials` at all, so an install without a
+     * credential provider stays absent from it instead of being described as missing one.
+     */
+    readonly acceptsWrites?: boolean;
 }
 /** The channel's lifetime is the plugin's lifetime. */
 export declare function apply(ctx: {

@@ -99,3 +99,61 @@ describe('the host half asks the seam only when somebody is reading the answer',
     expect((globalThis as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
   })
 })
+
+describe('the host half hands writes to the page, and performs none itself', () => {
+  beforeEach(() => {
+    delete (globalThis as Record<string, unknown>)[CHANNEL_KEY]
+  })
+
+  type Commanded = { command: (request: unknown) => Promise<{ ok: boolean; reason?: string; message?: string | null }> }
+
+  const channelOn = (): Commanded => (globalThis as Record<string, unknown>)[CHANNEL_KEY] as Commanded
+
+  it('offers command() once accepted, and writes nothing just for being enabled', async () => {
+    const { context, effects, seam } = contextOf({ hasInject: true })
+    apply(context, { acceptsWrites: true })
+    const disposers = effects.map(effect => effect())
+    expect(typeof channelOn().command).toBe('function')
+    // Arming opened the channel; it did not save, forget, or even read the seam.
+    expect(seam.reads).toBeUndefined()
+    for (const dispose of disposers) dispose()
+  })
+
+  it('refuses a save the store rejects, and says which rule in the store\'s words', async () => {
+    const { context, effects, seam } = contextOf({ hasInject: true })
+    apply(context, { acceptsWrites: true })
+    const disposers = effects.map(effect => effect())
+    const outcome = await channelOn().command({ name: 'save', key: 'sk-not-an-amd-key' })
+    expect(outcome.ok).toBe(false)
+    expect(outcome.reason).toBe('absent')
+    expect(outcome.message).toContain('sk-')
+    // The refused key never reached set(); the one read this command makes is that confirm re-read.
+    expect(seam.reads).toBe(1)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('saves a well-formed key, then reports the seam rather than its own optimism', async () => {
+    const { context, effects, seam } = contextOf({ hasInject: true, configured: true })
+    apply(context, { acceptsWrites: true })
+    const disposers = effects.map(effect => effect())
+    const outcome = await channelOn().command({ name: 'save', key: 'rc-' + 'a'.repeat(32) })
+    expect(outcome.ok).toBe(true)
+    // Exactly the confirm read this command just made: the earlier ok case showed that arming
+    // without a reader asks the seam nothing, and this count is what pins that down.
+    expect(seam.reads).toBe(1)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('stays closed to writes when the host is not asked to accept them', async () => {
+    const { context, effects, injections } = contextOf({ hasInject: true })
+    apply(context)
+    const disposers = effects.map(effect => effect())
+    expect(injections).toEqual([])
+    expect(typeof channelOn().command).toBe('function')
+    expect(await channelOn().command({ name: 'save', key: 'rc-' + 'a'.repeat(32) })).toEqual({
+      ok: false,
+      reason: 'no credential service',
+    })
+    for (const dispose of disposers) dispose()
+  })
+})

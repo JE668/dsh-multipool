@@ -22,7 +22,7 @@ function lineOf(provider) {
         providerId: provider.providerId,
         available: provider.tally.available,
         total: provider.tally.total,
-        hasEndpoint: provider.usageAvailable || provider.dailyUsedPts !== undefined,
+        hasEndpoint: provider.usageAvailable && provider.dailyUsedPts !== undefined,
         hasReading: provider.dailyUsedPts !== undefined
             && provider.dailyUsedPts.value !== null
             && provider.dailyLimitPts?.value !== undefined

@@ -75,6 +75,33 @@ describe('provider lines print an em dash, not a zero', () => {
   })
 })
 
+describe('a field upstream left null is not an endpoint that answered', () => {
+  // unknownValue() writes { value: null, source: 'unknown' } when upstream never said the figure.
+  // Asking only whether the field is there is true for that shape too, which prints "answered
+  // nothing" about a question nobody was around to answer: hasReading is what the painter asks.
+  const unread = { value: null, source: 'unknown' as const, raw: 'not-provided' }
+
+  it('keeps hasReading false though both fields are present', () => {
+    const s = snap([acct('amd', 'A', 'available')], [], {
+      amd: usage({ reason: 'unavailable', dailyUsedPts: unread, dailyLimitPts: unread }),
+    })
+    expect(providerOf(s, 'amd').dailyUsedPts).toBeDefined()
+    expect(providerOf(s, 'amd').dailyUsedPts?.value).toBeNull()
+    expect(pointsLine(providerOf(s, 'amd'), null)).toBe('今日 pts ' + DASH + '（上游未返回）')
+    expect(pointsLine(providerOf(s, 'amd'), null)).not.toMatch(/[0-9]/)
+  })
+
+  it('takes hasEndpoint from usageAvailable, which a null figure does not flip', () => {
+    const read = snap([acct('amd', 'A', 'available')], [], {
+      amd: usage({ reason: 'unavailable', dailyUsedPts: unread, dailyLimitPts: unread }),
+    })
+    const none = snap([acct('nim', 'N', 'available')])
+    // Neither provider produced a number; only one of them has an endpoint that answered "null".
+    expect(pointsLine(providerOf(read, 'amd'), null)).not.toContain('无用量端点')
+    expect(pointsLine(providerOf(none, 'nim'), null)).toContain('无用量端点')
+  })
+})
+
 describe('pts line three says what upstream said or nothing', () => {
   it('carries the fetched values', () => {
     const s = snap([acct('amd', 'A', 'available')], [], {

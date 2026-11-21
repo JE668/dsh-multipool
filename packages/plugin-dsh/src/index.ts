@@ -25,11 +25,28 @@
  */
 
 import { createSystemClock } from '@dsh-multipool/core'
-import { openChannel, type ChannelSource, type IconBudget } from './channel.js'
-import { CREDENTIALS_SERVICE, watchKeyStatus, type KeyContext, type KeyStatus } from './credentials.js'
+import {
+  AMD_KEY_REF_NAME,
+  openChannel,
+  type ChannelSource,
+  type ChannelWrites,
+  type CommandOutcome,
+  COMMAND_NO_WRITES,
+  type IconBudget,
+} from './channel.js'
+import {
+  CREDENTIALS_SERVICE,
+  clearKeyStatus,
+  watchKeyStatus,
+  writeKeyStatus,
+  type KeyContext,
+  type KeyStatus,
+  type KeyWriteOutcome,
+} from './credentials.js'
+import type { CredentialSeam } from './key-store.js'
 import { NOTHING_READ, channelSourceFrom } from './source.js'
 
-export const VERSION = '0.0.2-rc.3'
+export const VERSION = '0.0.2-rc.4'
 
 /** The icon prints this until a task computes the real account budget (04 section 2.2). */
 export const NO_BUDGET_SOURCES: readonly string[] = []
@@ -45,7 +62,40 @@ export interface HostOptions {
    * `credentials/reference-updated` that names this plugin's reference -- no other schedule exists.
    */
   readonly onKeyStatus?: (status: KeyStatus) => void
+  /**
+   * Offer the write half to the page's command() (T-2-e). Off unless asked for.
+   *
+   * A host that takes no writes never resolves `credentials` at all, so an install without a
+   * credential provider stays absent from it instead of being described as missing one.
+   */
+  readonly acceptsWrites?: boolean
 }
+
+/** The store's answer, turned into what the page's command() hands back. */
+function outcomeOf(result: KeyWriteOutcome): CommandOutcome {
+  const status = result.status
+  if (status.kind === 'read') {
+    const state = status.state
+    // The seam object is dropped here, not by the page: it is a live handle with four methods, and
+    // the icon only ever needed to know whether a key is now there.
+    const reading = state.kind === 'configured'
+      ? { present: true, layer: state.layer }
+      : { present: false }
+    // "refused" and "unavailable" reach the page as their own words: one says the store answered with
+    // an error, the other that there was no store to answer. Neither is the page's fault, and a form
+    // that printed an unfilled field for either would be the mild lie this branch exists to avoid.
+    return state.kind === 'configured'
+      ? { ok: true, status: reading, message: result.message }
+      : { ok: false, reason: state.kind, status: reading, message: result.message }
+  }
+  return { ok: false, reason: COMMAND_NO_WRITES, message: result.message }
+}
+
+const writesFor = (seam: CredentialSeam): ChannelWrites => ({
+  save: (key: string) => writeKeyStatus({ credentials: seam }, key, AMD_KEY_REF_NAME).then(outcomeOf),
+  forget: () => clearKeyStatus({ credentials: seam }, AMD_KEY_REF_NAME).then(outcomeOf),
+})
+
 
 /** The channel's lifetime is the plugin's lifetime. */
 export function apply(
@@ -64,9 +114,16 @@ export function apply(
     // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
     // the page's listener table, which is what the comment above "no inject" promises in practice.
     const onKeyStatus = options.onKeyStatus
-    if (onKeyStatus !== undefined && typeof ctx.inject === 'function') {
-      drops.push(ctx.inject([CREDENTIALS_SERVICE], child => {
-        drops.push(watchKeyStatus(child, onKeyStatus))
+    const inject = ctx.inject
+    // Neither a reader nor a writer means no listener: the injection below is the one thing that would
+    // put this plugin in the page's event table with nothing to do there.
+    if (typeof inject === 'function' && (onKeyStatus !== undefined || options.acceptsWrites === true)) {
+      drops.push(inject.call(ctx, [CREDENTIALS_SERVICE], child => {
+        const seam = child.credentials
+        if (seam === undefined) return
+        if (onKeyStatus !== undefined) drops.push(watchKeyStatus(child, onKeyStatus))
+        // The write half is handed to the page, not used here. apply() still writes nothing itself.
+        if (options.acceptsWrites === true) channel.offer(writesFor(seam))
       }))
     }
     return () => {

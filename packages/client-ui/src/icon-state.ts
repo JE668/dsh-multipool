@@ -40,7 +40,14 @@ export interface ProviderCountLine {
   readonly providerId: ProviderId
   readonly available: number
   readonly total: number
-  /** False when the provider publishes no usage endpoint, so "0/0" would be a claim we cannot make. */
+  /**
+   * False when the provider publishes no usage endpoint, so "0/0" would be a claim we cannot make.
+   *
+   * Read from `usageAvailable` alone: the field being present is not the endpoint existing. A
+   * present-but-null figure is what `unknownValue()` writes when upstream never said, and counting it
+   * as an endpoint turns "no answer" into "answered nothing", which is the one lie docs/05 section
+   * 2.3 keeps line three from telling. Presence of the field is checked only after upstream has spoken.
+   */
   readonly hasEndpoint: boolean
   /** True when that endpoint answered with actual numbers -- a field present but null is not a reading. */
   readonly hasReading: boolean
@@ -51,7 +58,7 @@ function lineOf(provider: ProviderSnapshot): ProviderCountLine {
     providerId: provider.providerId,
     available: provider.tally.available,
     total: provider.tally.total,
-    hasEndpoint: provider.usageAvailable || provider.dailyUsedPts !== undefined,
+    hasEndpoint: provider.usageAvailable && provider.dailyUsedPts !== undefined,
     hasReading: provider.dailyUsedPts !== undefined
       && provider.dailyUsedPts.value !== null
       && provider.dailyLimitPts?.value !== undefined
