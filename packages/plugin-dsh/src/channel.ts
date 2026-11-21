@@ -2,9 +2,16 @@
  * The host side of the left-bar icon (docs/05 section 2.3, T-2-b).
  *
  * The browser half runs in the page's module table and cannot call into this process, so what
- * it reads is whatever publish() last put on one window key. Nothing else crosses: not the key
- * store, not the scheduler, not the proxy -- except a command, which travels the other way on
- * that same key and only when the page asks for one (T-2-e).
+ * it reads is whatever publish() last built. Nothing else crosses: not the key store, not the
+ * scheduler, not the proxy -- except a command, which is one of the two endpoints in here and
+ * only runs when the page asks for it (T-2-e).
+ *
+ * The view reaches the page over `connection.rpc` (dsh-client-connection), not over a window
+ * key. That key used to be the design: the host wrote a live object onto globalThis, and the
+ * page read it. It could not work, because the two halves are two processes and globalThis is
+ * one per process -- but the tests all passed, since a test hands both halves the same global.
+ * An HTTP channel is what both processes can actually reach, and it brings the authentication
+ * this file would otherwise have had to invent: `rpc.handle` admits, this module answers.
  *
  * Three rules shape the code below.
  *
@@ -16,6 +23,11 @@
  * 3. A command name we do not know is refused, not ignored. Listing the two that exist makes the
  *    extension surface one line long, so adding a third is a diff someone reviews rather than a
  *    typo that silently does nothing.
+ *
+ * One property is easy to lose here and was lost once already. Both endpoints return JSON, so
+ * nothing on the wire may be a function or a live handle -- which is why CommandOutcome carries a
+ * KeyReading and not the KeyStatus it was built from. A test that shares the same process cannot
+ * notice the difference, so the shape is narrow on purpose.
  */
 
 import {
@@ -31,29 +43,36 @@ import {
 import { iconViewOf, type IconView } from '@dsh-multipool/plugin-client'
 import type { KeyLayer } from './key-store.js'
 
-/** The key the browser half reads. Must match CHANNEL in packages/client-ui/client.js. */
-export const CHANNEL_KEY = '@dsh-multipool/plugin-client/view'
+/**
+ * The RPC channel the page calls.
+ *
+ * One segment, and no slash inside it: dsh-client-connection tests a host channel against
+ * /^\/[A-Za-z0-9._~-]+$/ and refuses the rest, reserving `/api` for the gateway it owns itself.
+ * Rejected channel names fail at registration, so this constant is the only place the name is
+ * spelled -- an endpoint below only ever appends one segment to it.
+ */
+export const CHANNEL = '/multipool'
 
-/** What the browser half calls. Mirrors the shape client.js expects on window[CHANNEL_KEY]. */
+/** The two endpoints `CHANNEL` serves; every other name is refused, see dispatch(). */
+export const ENDPOINT_SNAPSHOT = 'snapshot'
+export const ENDPOINT_COMMAND = 'command'
+
+/**
+ * What the browser half calls. Mirrors the shape client.js expects on
+ * window.connection.rpc, reached as connection.rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, {}).
+ */
 export interface Channel {
+  /** ENDPOINT_SNAPSHOT: the current view, as it stands, JSON on the wire. */
   readonly view: () => IconView
-  readonly subscribe: (listener: (view: IconView) => void) => () => void
   /**
-   * Ask the host to do one named thing.
+   * ENDPOINT_COMMAND: ask the host to do one named thing.
    *
-   * The only message that travels from page to host. Its argument is `unknown` because the page
-   * is the one place a command arrives without having been typed: a name this file has never
-   * heard of is a refusal, never a TypeError thrown into the caller's click handler.
+   * Its argument is `unknown` because the page is the one place a command arrives without having
+   * been typed: a name this file has never heard of is a refusal, never a TypeError thrown into
+   * the caller's click handler. The payload has crossed JSON by the time it gets here, so the
+   * first thing dispatch() does is stop trusting its shape.
    */
   readonly command: (request: unknown) => Promise<CommandOutcome>
-  /**
-   * Attach the write half after `openChannel`.
-   *
-   * The write seam reaches `apply` through `ctx.inject`, which resolves later than the channel is
-   * opened, so the channel has to accept it late -- and refuse commands until it does, rather than
-   * answering "no credential service" about a service that simply has not arrived yet.
-   */
-  readonly offer: (writes: ChannelWrites) => void
 }
 
 export interface ChannelSource {
@@ -72,28 +91,6 @@ export interface IconBudget {
   readonly admitRpm: number
   readonly sources: readonly string[]
 }
-
-/**
- * Narrow seam over the global object, so a test can hand in a bare one.
- *
- * Both members are plain property assignment on purpose: the host process has no `window`, and
- * `globalThis` has no `setProperty` -- the first install died on `target.setProperty is not a
- * function` for assuming one. The browser half finds the key by reading `window[CHANNEL]`, so a
- * property that is simply there is what it needs; no method has to be invented to put it there.
- */
-export interface ChannelTarget {
-  readonly write: (key: string, value: unknown) => void
-}
-
-/** The real global object, addressed as `ChannelTarget`. */
-function globalTarget(): ChannelTarget {
-  return {
-    write(key: string, value: unknown): void {
-      ;(globalThis as unknown as Record<string, unknown>)[key] = value
-    },
-  }
-}
-
 
 /** The ref this plugin stores its one key under; the form's field is named after it. */
 export const AMD_KEY_REF_NAME = 'AMD_API_KEY'
@@ -158,7 +155,6 @@ export interface PublishedView {
 export interface OpenChannelOptions {
   readonly source: ChannelSource
   readonly budget: IconBudget
-  readonly target?: ChannelTarget
   /** Which provider line three's point count comes from; null prints only the dash. */
   readonly pointsProviderId?: ProviderId | null
   /**
@@ -171,20 +167,15 @@ export interface OpenChannelOptions {
 }
 
 export interface ChannelHandle {
-  /** Rebuild from current state, hand the result to every subscriber, and return it. */
+  /** Rebuild from current state and remember it. Returns what the next view() will answer. */
   readonly publish: () => PublishedView
-  /** Re-send the last built view without reading the source again. */
-  readonly republish: () => PublishedView
   readonly isPublished: () => boolean
   readonly command: (request: unknown) => Promise<CommandOutcome>
   /** Attach the write half once the credential seam resolves. */
   readonly offer: (writes: ChannelWrites) => void
-  /** Drop every subscriber and remove the window key. The channel is dead afterwards. */
+  /** Forget the last view. The channel is dead afterwards. */
   readonly close: () => void
 }
-
-/** republish() before publish() has nothing to send, and a silent empty send reads as a bug. */
-const NO_SUBSCRIBERS = 'publish() has not run yet; there is no view to re-send'
 
 export function buildPublishedView(
   source: ChannelSource,
@@ -248,48 +239,20 @@ async function dispatch(
 /**
  * Opens the channel and returns the handle.
  *
- * The window key is installed before this returns, so the browser half always has something
- * to call -- even if the first publish() has not happened yet, view() builds a snapshot on
- * demand.
+ * Nothing is installed on the page here: `apply` closes over the handle and registers it with
+ * `connection.rpc.handle`, which is the thing that admits a caller. This function only decides
+ * what the two endpoints answer.
  */
 export function openChannel(options: OpenChannelOptions): ChannelHandle {
-  const target: ChannelTarget = options.target === undefined ? globalTarget() : options.target
   const pointsProviderId: ProviderId | null = options.pointsProviderId === undefined
     ? null
     : options.pointsProviderId
 
-  const subscribers = new Set<(view: IconView) => void>()
   let writes = options.writes
   let last: PublishedView | null = null
   let closed = false
 
   const build = (): PublishedView => buildPublishedView(options.source, options.budget, pointsProviderId)
-
-  const channel: Channel = {
-    view() {
-      if (last === null) last = build()
-      return last.view
-    },
-    subscribe(listener: (view: IconView) => void): () => void {
-      if (closed) return () => undefined
-      subscribers.add(listener)
-      // A late subscriber gets today's view rather than a dash until the next publish -- the
-      // host being up is exactly what it should not have to wait to learn.
-      if (last !== null) listener(last.view)
-      return () => {
-        subscribers.delete(listener)
-      }
-    },
-    command(request: unknown): Promise<CommandOutcome> {
-      return dispatch(request, writes, () => closed)
-    },
-    offer(next: ChannelWrites): void {
-      if (closed) return
-      writes = next
-    },
-  }
-
-  target.write(CHANNEL_KEY, channel)
 
   return {
     command(request: unknown): Promise<CommandOutcome> {
@@ -300,16 +263,7 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
       writes = next
     },
     publish(): PublishedView {
-      const next = build()
-      last = next
-      // Publishing after close() would put the key back on a window that already unloaded us.
-      if (closed) return next
-      for (const listener of subscribers) listener(next.view)
-      return next
-    },
-    republish(): PublishedView {
-      if (last === null) throw new Error(NO_SUBSCRIBERS)
-      if (!closed) for (const listener of subscribers) listener(last.view)
+      last = build()
       return last
     },
     isPublished(): boolean {
@@ -317,9 +271,44 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
     },
     close(): void {
       closed = true
-      subscribers.clear()
-      target.write(CHANNEL_KEY, undefined)
       last = null
     },
+  }
+}
+
+/**
+ * The `connection.rpc.handle` callback: one JSON payload per endpoint name, one JSON answer.
+ *
+ * `handler` is handed the endpoint the caller asked for and a payload that is already plain JSON.
+ * Both endpoints answer in the shape the transport on the other side parses -- { ok, value } or
+ * { ok: false, error } -- and neither answer may carry a function, a class instance, or a live
+ * handle.
+ *
+ * An unknown endpoint is refused by name. The same argument as rule 3 above applies one level up:
+ * the set of endpoints is the whole surface a page can reach, so it stays a list somebody reads.
+ */
+export function handleOf(
+  handle: ChannelHandle,
+): (endpoint: string, payload: unknown) => Promise<
+  { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } }
+> {
+  return async (endpoint: string, payload: unknown) => {
+    if (endpoint === ENDPOINT_SNAPSHOT) {
+      return { ok: true as const, value: handle.publish().view }
+    }
+    if (endpoint === ENDPOINT_COMMAND) {
+      // The payload is { request } rather than the request itself: a command with no fields
+      // (`{}`) and a command that never arrived (`undefined`) then stay two different answers,
+      // and dispatch() gets to decide which of them is malformed.
+      const request = payload !== null && typeof payload === 'object'
+        ? (payload as Record<string, unknown>).request
+        : undefined
+      return { ok: true as const, value: await handle.command(request) }
+    }
+    return {
+      ok: false as const,
+      error: { code: 'multipool/unknown-endpoint', message: `no endpoint ${JSON.stringify(endpoint)}` },
+    }
   }
 }

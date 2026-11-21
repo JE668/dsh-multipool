@@ -39,6 +39,15 @@ function registrar() {
   const plugin = factory()
   const seen = []
   const components = []
+  const asked = []
+  globalThis.window.connection = {
+    rpc: {
+      call(channel, endpoint, payload) {
+        asked.push([channel, endpoint, payload])
+        return Promise.reject(new TypeError('tried to talk to a host that is not running'))
+      },
+    },
+  }
   const ctx = {
     slots: {
       inject(name, fn) {
@@ -58,7 +67,7 @@ function registrar() {
   }
   plugin.apply(ctx)
   const componentOf = (slot) => components.filter((c) => c.owner.name === slot).map((c) => c.comp)
-  return { plugin, seen, componentOf }
+  return { plugin, seen, asked, componentOf }
 }
 
 test('loads one lazy factory named after the package', () => {
@@ -90,8 +99,7 @@ function mounted() {
   return { plugin, pick: (slot) => componentOf(slot)[0], componentOf }
 }
 
-test('paints idle with three dashes when no host channel exists', () => {
-  delete globalThis.window['@dsh-multipool/plugin-client/view']
+test('paints idle with three dashes when no host answers the call', () => {
   const { pick } = mounted()
   const tree = pick('sidebar.panellist')({ size: 34, active: false })
   const lines = tree.props.title.split('\n')
@@ -114,11 +122,8 @@ test('paints idle with three dashes when no host channel exists', () => {
   assert.ok(badge.props.style.width < ring.props.size / 3 + 1)
 })
 
-test('a channel with no command() is a host too old, not a save that failed', async () => {
-  globalThis.window = {
-    __ModuleLoader__: { load: spec => { captured = spec } },
-    ['@dsh-multipool/plugin-client/view']: { view: () => undefined, subscribe: () => () => undefined },
-  }
+test('a page with no connection service is a host too old, not a save that failed', async () => {
+  globalThis.window = { __ModuleLoader__: { load: spec => { captured = spec } } }
   const plugin = factory()
   // `ok: false` is all a click handler can act on; the reason is what tells "your key was refused"
   // from "this build has nowhere to put a key", and only the first one is worth retrying.
@@ -127,28 +132,48 @@ test('a channel with no command() is a host too old, not a save that failed', as
   assert.equal(outcome.reason, 'no credential service')
 })
 
-test('a command that throws comes back as a refusal, not as a rejected promise', async () => {
+test('asks the host on its channel and endpoint, and sends the request as given', async () => {
   const calls = []
   globalThis.window = {
     __ModuleLoader__: { load: spec => { captured = spec } },
-    ['@dsh-multipool/plugin-client/view']: {
-      view: () => undefined,
-      subscribe: () => () => undefined,
-      command: request => {
-        calls.push(request)
-        throw new TypeError('command is not a function')
+    connection: {
+      rpc: {
+        call: (channel, endpoint, payload) => {
+          calls.push([channel, endpoint, payload])
+          return Promise.resolve({ ok: true, value: { ok: true, status: { present: true }, message: null } })
+        },
       },
     },
   }
   const plugin = factory()
-  const outcome = await plugin.commandOf({ name: 'forget' })
-  assert.deepEqual(calls, [{ name: 'forget' }])
-  assert.equal(outcome.ok, false)
-  // "command failed" and not "no credential service": this channel exists, the call reached it, and
-  // broke there. Both arms of commandOf() (a synchronous throw and a rejected promise) say the
+  const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
+  // Both halves name the channel, so this string is the whole handshake between them.
+  assert.deepEqual(calls, [['/multipool', 'command', { request: { name: 'save', key: 'rc-abc' } }]])
+  assert.deepEqual(outcome, { ok: true, status: { present: true }, message: null })
+})
+
+test('a call that throws or rejects comes back as a refusal, not as a rejected promise', async () => {
+  const throwing = factory()
+  globalThis.window.connection = {
+    rpc: {
+      call: () => {
+        throw new TypeError('no transport')
+      },
+    },
+  }
+  const first = await throwing.commandOf({ name: 'forget' })
+  assert.equal(first.ok, false)
+  // "command failed" and not "no credential service": the service is here and the call reached it,
+  // and broke there. Both arms of commandOf() (a synchronous throw and a rejected promise) say the
   // same word, or a page would have to know which kind of breakage it was looking at.
-  assert.equal(outcome.reason, 'command failed')
-  assert.equal(outcome.message, 'command is not a function')
+  assert.equal(first.reason, 'command failed')
+  assert.equal(first.message, 'no transport')
+
+  globalThis.window.connection = { rpc: { call: () => Promise.reject(new RangeError('socket closed')) } }
+  const second = await factory().commandOf({ name: 'forget' })
+  assert.equal(second.ok, false)
+  assert.equal(second.reason, 'command failed')
+  assert.equal(second.message, 'socket closed')
 })
 
 test('still prints 0/0 once the host answers with an empty pool', () => {

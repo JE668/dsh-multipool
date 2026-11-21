@@ -11,15 +11,17 @@
  * spelled out instead of imported, and icon-state.test.ts holds the two copies to one answer over
  * a shared table of snapshots.
  *
- * The host half runs in a different process and cannot reach that table, so it hands its view over
- * on window instead:
+ * The host half runs in a different process, so the two do not share a global and cannot. They meet
+ * on the connection service instead, which both processes hold and which carries authentication:
  *
- *   window[CHANNEL] = {
- *     view(): IconView,                 // built by core.iconViewOf
- *     subscribe(fn): () => void,        // called on every change, returns an unsubscribe
- *   }
+ *   connection.rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, payload)   -> { ok: true, value: IconView }
+ *   connection.rpc.call(CHANNEL, ENDPOINT_COMMAND, { request })  -> { ok: true, value: CommandOutcome }
  *
- * Until such a channel exists the icon paints the empty pool: grey, 0/0, three dashes. That is the
+ * The call is the request. There is no subscribe: the icon asks when it paints, and the panel asks
+ * when it is opened, which is the only moment either answer is looked at. A host that is
+ * not running cannot refuse the request, it cannot be asked -- and the failed call is the dash.
+ *
+ * Until a snapshot arrives the icon paints the empty pool: idle, --/--, three dashes. That is the
  * right answer for a fresh install, and for a host that is not running it is the only answer we
  * have that is not a guess.
  */
@@ -27,7 +29,11 @@ window.__ModuleLoader__.load({
   id: 'dsh-multipool',
   factory(require) {
     const React = require('react')
-    const CHANNEL = '@dsh-multipool/plugin-client/view'
+    // The Host half registers exactly this channel (packages/plugin-dsh/src/channel.ts).
+    // One segment: dsh-client-connection validates it against /^\/[A-Za-z0-9._~-]+$/.
+    var CHANNEL = '/multipool'
+    var ENDPOINT_SNAPSHOT = 'snapshot'
+    var ENDPOINT_COMMAND = 'command'
     var NO_VALUE = '\u2014'
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
@@ -126,37 +132,77 @@ window.__ModuleLoader__.load({
     // one thing a form must not do is turn "your key was refused" and "this build cannot save a
     // key" into the same grey sentence:
     //
-    //   NO_WRITES       -- no channel, or no command() on it: the host predates T-2-e
-    //   COMMAND_FAILED  -- command() threw, or rejected: the host is there and the call broke
+    //   NO_WRITES       -- no connection service, or no rpc on it: the host predates T-2-e
+    //   COMMAND_FAILED  -- the call itself threw or rejected: the transport, not the store
     //
-    // A refusal from the host itself is neither: it resolves, with `ok: false` and the store's
-    // own reason, and passes through untouched including `message`.
+    // A refusal from the host itself is neither. It arrives as a resolved envelope carrying
+    // ok: true -- the call was answered -- with the store's own verdict inside, and passes
+    // through untouched, `message` included.
     var NO_WRITES = 'no credential service'
     var COMMAND_FAILED = 'command failed'
 
-    function commandOf(request) {
-      var channel = typeof window === 'undefined' ? undefined : window[CHANNEL]
-      if (channel === undefined || channel === null) {
-        return Promise.resolve({ ok: false, reason: NO_WRITES })
+    /** The rpc face of the connection service, or undefined on a host that has none. */
+    function rpcOf() {
+      var connection = typeof window === 'undefined' ? undefined : window.connection
+      if (connection === undefined || connection === null) return undefined
+      if (connection.rpc === undefined || connection.rpc === false || connection.rpc === null) return undefined
+      if (typeof connection.rpc.call !== 'function') return undefined
+      return connection.rpc
+    }
+
+    function failed(thrown) {
+      return {
+        ok: false,
+        reason: COMMAND_FAILED,
+        message: thrown instanceof Error ? thrown.message : String(thrown),
       }
-      if (typeof channel.command !== 'function') {
-        return Promise.resolve({ ok: false, reason: NO_WRITES })
-      }
+    }
+
+    /** One endpoint of the channel: the envelope in, the value out, or the failure. */
+    function ask(endpoint, payload) {
+      var rpc = rpcOf()
+      if (rpc === undefined) return Promise.reject(new Error(NO_WRITES))
+      var reply
       try {
-        return Promise.resolve(channel.command(request)).catch(function (thrown) {
+        reply = Promise.resolve(rpc.call(CHANNEL, endpoint, payload))
+      } catch (thrown) {
+        return Promise.reject(thrown)
+      }
+      return reply.then(function (answer) {
+        if (answer === undefined || answer === null || answer.ok !== true) return undefined
+        return answer.value
+      })
+    }
+
+    function commandOf(request) {
+      if (rpcOf() === undefined) return Promise.resolve({ ok: false, reason: NO_WRITES })
+      // A call that threw on the way out is the transport breaking, not the store refusing: the
+      // service was there and the request reached the edge of it, so this says "failed", not "older
+      // than T-2-e". Only the missing service itself earns NO_WRITES.
+      return ask(ENDPOINT_COMMAND, { request: request }).then(
+        function (outcome) {
+          return outcome === undefined ? { ok: false, reason: NO_WRITES } : outcome
+        },
+        function (thrown) {
           return {
             ok: false,
             reason: COMMAND_FAILED,
             message: thrown instanceof Error ? thrown.message : String(thrown),
           }
-        })
-      } catch (thrown) {
-        return Promise.resolve({
-          ok: false,
-          reason: COMMAND_FAILED,
-          message: thrown instanceof Error ? thrown.message : String(thrown),
-        })
-      }
+        },
+      )
+    }
+
+    /** The icon view the host is answering with right now, or the empty pool if it is not. */
+    function viewOf() {
+      return ask(ENDPOINT_SNAPSHOT, {}).then(
+        function (view) {
+          return view === undefined || view === null ? emptyView() : view
+        },
+        function (thrown) {
+          return { ok: false, reason: COMMAND_FAILED, message: thrown instanceof Error ? thrown.message : String(thrown) }
+        },
+      )
     }
 
     // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a
@@ -204,10 +250,14 @@ window.__ModuleLoader__.load({
       const setView = pair[1]
 
       React.useEffect(function () {
-        const channel = window[CHANNEL]
-        if (channel === undefined || channel === null) return undefined
-        setView(channel.view())
-        return channel.subscribe(setView)
+        var live = true
+        viewOf().then(function (next) {
+          // A row that unmounted before the answer came back must not set state on a gone tree.
+          if (live) setView(next)
+        })
+        return function () {
+          live = false
+        }
       }, [])
 
       const title = view.lines.accounts + '\n' + view.lines.rpm + '\n' + view.lines.points
@@ -275,10 +325,14 @@ window.__ModuleLoader__.load({
       const setView = pair[1]
 
       React.useEffect(function () {
-        const channel = window[CHANNEL]
-        if (channel === undefined || channel === null) return undefined
-        setView(channel.view())
-        return channel.subscribe(setView)
+        var live = true
+        viewOf().then(function (next) {
+          // A row that unmounted before the answer came back must not set state on a gone tree.
+          if (live) setView(next)
+        })
+        return function () {
+          live = false
+        }
       }, [])
 
       const styles = {

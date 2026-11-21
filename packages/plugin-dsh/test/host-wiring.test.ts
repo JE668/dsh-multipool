@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { CHANNEL_KEY } from '../src/channel.js'
+import { CHANNEL, ENDPOINT_COMMAND, type Channel } from '../src/channel.js'
 import { KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
 import { apply } from '../src/index.js'
 
@@ -18,10 +18,22 @@ interface FakeSeam {
  * A context carrying only what apply() reads, recorded instead of performed.
  * `hasInject: false` stands for a context that predates the inject mixin.
  */
+type Served = Map<string, { opened: string[]; handler: (endpoint: string, payload: unknown) => Promise<unknown> }>
+
+interface FakeConnection {
+  rpc: {
+    handle(
+      channel: string,
+      handler: (endpoint: string, payload: unknown) => Promise<unknown>,
+    ): () => void
+  }
+}
+
 function contextOf(config: { hasInject: boolean; configured?: boolean }) {
   const effects: Array<() => () => void> = []
   const injections: string[] = []
   const listeners: Listener[] = []
+  const served: Served = new Map()
   const seam: FakeSeam = {
     resolve: async () => undefined,
     describe: async () => {
@@ -33,15 +45,25 @@ function contextOf(config: { hasInject: boolean; configured?: boolean }) {
     set: async () => undefined,
     unset: async () => undefined,
   }
+  const connection: FakeConnection = {
+    rpc: {
+      handle(channel, handler) {
+        served.set(channel, { opened: [], handler })
+        return () => {
+          served.delete(channel)
+        }
+      },
+    },
+  }
   const context = {
     effect(callback: () => () => void): () => void {
       effects.push(callback)
       return () => undefined
     },
     inject: config.hasInject
-      ? (names: string[], callback: (child: { credentials: FakeSeam }) => void): (() => void) => {
-          injections.push(names.join(','))
-          callback({ credentials: seam })
+      ? (names: string[], callback: (child: { credentials: FakeSeam; connection: FakeConnection }) => void): (() => void) => {
+          for (const name of names) injections.push(name)
+          callback({ credentials: seam, connection })
           return () => undefined
         }
       : undefined,
@@ -51,26 +73,25 @@ function contextOf(config: { hasInject: boolean; configured?: boolean }) {
       return () => undefined
     },
   }
-  return { context, effects, injections, listeners, seam }
+  return { context, effects, injections, listeners, seam, served }
 }
 
-describe('the host half asks the seam only when somebody is reading the answer', () => {
-  beforeEach(() => {
-    // apply() writes CHANNEL_KEY onto globalThis; each case starts without it.
-    delete (globalThis as Record<string, unknown>)[CHANNEL_KEY]
-  })
 
-  it('publishes the channel and asks nothing when no reader is given', () => {
-    const { context, effects, injections, seam } = contextOf({ hasInject: true })
+describe('the host half asks the seam only when somebody is reading the answer', () => {
+  it('registers the route and asks nothing when no reader is given', async () => {
+    const { context, effects, injections, seam, served } = contextOf({ hasInject: true })
     apply(context)
     // apply() only registers its body; the channel is opened when effect() runs it, as cordis does.
     const disposers = effects.map(effect => effect())
-    expect(injections).toEqual([])
+    expect(injections).toEqual(['connection'])
     expect(seam.reads).toBeUndefined()
-    expect((globalThis as Record<string, unknown>)[CHANNEL_KEY]).toBeDefined()
+    // Both processes can see globalThis; only one of them can see the route, and that is why
+    // the route is where the page is told anything.
+    expect(CHANNEL).toBe('/multipool')
+    expect(served.has(CHANNEL)).toBe(true)
 
     for (const dispose of disposers) dispose()
-    expect((globalThis as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
+    expect(served.has(CHANNEL)).toBe(false)
   })
 
   it('arms one read through the credentials service when a reader is given', async () => {
@@ -79,7 +100,7 @@ describe('the host half asks the seam only when somebody is reading the answer',
     apply(context, { onKeyStatus: status => seen.push(status) })
     const disposers = effects.map(effect => effect())
 
-    expect(injections).toEqual(['credentials'])
+    expect(injections).toEqual(['connection', 'credentials'])
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(seen).toHaveLength(1)
     expect(seen[0]?.kind).toBe('read')
@@ -89,41 +110,49 @@ describe('the host half asks the seam only when somebody is reading the answer',
   })
 
   it('still opens the channel on a context that cannot inject', () => {
-    const { context, effects, injections, seam } = contextOf({ hasInject: false })
+    const { context, effects, injections, seam, served } = contextOf({ hasInject: false })
     apply(context, { onKeyStatus: () => undefined })
     const disposers = effects.map(effect => effect())
     expect(injections).toEqual([])
     expect(seam.reads).toBeUndefined()
-    expect((globalThis as Record<string, unknown>)[CHANNEL_KEY]).toBeDefined()
+    // Nothing was registered anywhere, and nothing threw on the way to saying so.
+    expect(served.size).toBe(0)
     for (const dispose of disposers) dispose()
-    expect((globalThis as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
+    expect(served.size).toBe(0)
   })
 })
 
 describe('the host half hands writes to the page, and performs none itself', () => {
-  beforeEach(() => {
-    delete (globalThis as Record<string, unknown>)[CHANNEL_KEY]
-  })
+  type Answer = { ok: boolean; value?: unknown; error?: { code: string; message: string } }
 
-  type Commanded = { command: (request: unknown) => Promise<{ ok: boolean; reason?: string; message?: string | null }> }
-
-  const channelOn = (): Commanded => (globalThis as Record<string, unknown>)[CHANNEL_KEY] as Commanded
+  /**
+   * The page's side of one command: POST the endpoint through the route apply() registered, and
+   * unwrap the envelope the way client-connection does. Written out rather than imported so the
+   * shape of the wire is asserted here and not only over there.
+   */
+  const commandOn = async (served: Served, request: unknown) => {
+    const route = served.get('/multipool')
+    expect(route).toBeDefined()
+    const once = (await route?.handler(ENDPOINT_COMMAND, { request })) as Answer
+    expect(once.ok).toBe(true)
+    return once.value as { ok: boolean; reason?: string; status?: unknown; message?: string | null }
+  }
 
   it('offers command() once accepted, and writes nothing just for being enabled', async () => {
-    const { context, effects, seam } = contextOf({ hasInject: true })
+    const { context, effects, seam, served } = contextOf({ hasInject: true })
     apply(context, { acceptsWrites: true })
     const disposers = effects.map(effect => effect())
-    expect(typeof channelOn().command).toBe('function')
+    expect(typeof served.get(CHANNEL)?.handler).toBe('function')
     // Arming opened the channel; it did not save, forget, or even read the seam.
     expect(seam.reads).toBeUndefined()
     for (const dispose of disposers) dispose()
   })
 
   it('refuses a save the store rejects, and says which rule in the store\'s words', async () => {
-    const { context, effects, seam } = contextOf({ hasInject: true })
+    const { context, effects, seam, served } = contextOf({ hasInject: true })
     apply(context, { acceptsWrites: true })
     const disposers = effects.map(effect => effect())
-    const outcome = await channelOn().command({ name: 'save', key: 'sk-not-an-amd-key' })
+    const outcome = await commandOn(served, { name: 'save', key: 'sk-not-an-amd-key' })
     expect(outcome.ok).toBe(false)
     expect(outcome.reason).toBe('absent')
     expect(outcome.message).toContain('sk-')
@@ -133,10 +162,10 @@ describe('the host half hands writes to the page, and performs none itself', () 
   })
 
   it('saves a well-formed key, then reports the seam rather than its own optimism', async () => {
-    const { context, effects, seam } = contextOf({ hasInject: true, configured: true })
+    const { context, effects, seam, served } = contextOf({ hasInject: true, configured: true })
     apply(context, { acceptsWrites: true })
     const disposers = effects.map(effect => effect())
-    const outcome = await channelOn().command({ name: 'save', key: 'rc-' + 'a'.repeat(32) })
+    const outcome = await commandOn(served, { name: 'save', key: 'rc-' + 'a'.repeat(32) })
     expect(outcome.ok).toBe(true)
     // Exactly the confirm read this command just made: the earlier ok case showed that arming
     // without a reader asks the seam nothing, and this count is what pins that down.
@@ -145,12 +174,12 @@ describe('the host half hands writes to the page, and performs none itself', () 
   })
 
   it('stays closed to writes when the host is not asked to accept them', async () => {
-    const { context, effects, injections } = contextOf({ hasInject: true })
+    const { context, effects, injections, served } = contextOf({ hasInject: true })
     apply(context)
     const disposers = effects.map(effect => effect())
-    expect(injections).toEqual([])
-    expect(typeof channelOn().command).toBe('function')
-    expect(await channelOn().command({ name: 'save', key: 'rc-' + 'a'.repeat(32) })).toEqual({
+    expect(injections).toEqual(['connection'])
+    expect(typeof served.get(CHANNEL)?.handler).toBe('function')
+    expect(await commandOn(served, { name: 'save', key: 'rc-' + 'a'.repeat(32) })).toEqual({
       ok: false,
       reason: 'no credential service',
     })

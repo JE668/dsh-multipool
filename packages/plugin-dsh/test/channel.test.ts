@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CHANNEL_KEY,
   COMMAND_CLOSED,
   COMMAND_MALFORMED,
   COMMAND_NO_WRITES,
   COMMAND_UNKNOWN,
+  ENDPOINT_COMMAND,
+  ENDPOINT_SNAPSHOT,
+  handleOf,
   openChannel,
   type ChannelSource,
-  type ChannelTarget,
   type ChannelWrites,
 } from '../src/channel.js'
+
 import type { Account, MetricsEvent, ProviderId } from '@dsh-multipool/core'
 import type { IconView } from '@dsh-multipool/plugin-client'
 
@@ -46,23 +48,18 @@ function sourceOf(accounts: readonly Account[], events: readonly MetricsEvent[] 
   }
 }
 
-class FakeWindow implements ChannelTarget {
-  private bag: Record<string, unknown> = {}
-  write(key: string, value: unknown): void {
-    this.bag[key] = value
-  }
-  read(key: string): unknown {
-    return this.bag[key]
-  }
-}
+const viewOf = (answer: unknown): IconView => (answer as { value: IconView }).value
 
 describe('channel', () => {
-  it('is on the window before the first publish, and builds on demand', () => {
-    const win = new FakeWindow()
-    const handle = openChannel({ source: sourceOf([acct('amd', 'AMD-A', 'available')]), budget: BUDGET, target: win, pointsProviderId: 'amd' })
-    const channel = win.read(CHANNEL_KEY) as { view: () => IconView }
+  it('answers before the first publish, and builds on demand', async () => {
+    const handle = openChannel({
+      source: sourceOf([acct('amd', 'AMD-A', 'available')]),
+      budget: BUDGET,
+      pointsProviderId: 'amd',
+    })
+    const answer = handleOf(handle)
     expect(handle.isPublished()).toBe(false)
-    const view = channel.view()
+    const view = viewOf(await answer(ENDPOINT_SNAPSHOT, {}))
     expect(handle.isPublished()).toBe(true)
     expect(view.attached).toBe(true)
     expect(view.badge).toBe('1/1')
@@ -71,66 +68,35 @@ describe('channel', () => {
     // unavailable usage result, and nothing on the wire says 5.81 / 40 on its behalf.
     expect(handle.publish().wire).toContain('no-endpoint')
   })
-  it('keeps the window key out of the wire, however the key is read', () => {
-    const win = new FakeWindow()
+
+  it('keeps the key out of the wire, however the key is read', () => {
     const handle = openChannel({
       source: sourceOf([acct('amd', 'AMD-A', 'available')]),
       budget: BUDGET,
-      target: win,
       pointsProviderId: 'amd',
     })
     const published = handle.publish()
     expect(published.wire).not.toContain('SECRET')
     expect(published.wire).not.toContain('rc-')
-    // The shape the page may call, not the data it carries: `command` and `offer` went in with
-    // T-2-e and neither one puts key material on the window (channel.test.ts proves command()
-    // refuses, and the writes it forwards are the seam's own calls, never the wire's).
-    expect(Object.keys(win.read(CHANNEL_KEY) as object)).toEqual(['view', 'subscribe', 'command', 'offer'])
+    // The answer is JSON. A function in here would be dropped by the transport without a word,
+    // and the page would print its dashes while every test in this file stayed green -- which is
+    // how the window key survived three green suites and one broken install.
+    expect(JSON.parse(JSON.stringify(published.view))).toEqual(published.view)
   })
 
-  it('hands a new subscriber the current view, not a dash until the next publish', () => {
-    const win = new FakeWindow()
-    const handle = openChannel({
-      source: sourceOf([acct('amd', 'AMD-A', 'available'), acct('amd', 'AMD-B', 'quota_unknown')]),
-      budget: BUDGET,
-      target: win,
-      pointsProviderId: 'amd',
-    })
-    handle.publish()
-    const channel = win.read(CHANNEL_KEY) as { subscribe: (fn: (v: IconView) => void) => () => void }
-    const seen: string[] = []
-    const off = channel.subscribe((view) => seen.push(view.badge))
-    expect(seen).toEqual(['1/2'])
-    off()
-    handle.publish()
-    expect(seen).toEqual(['1/2'])
-  })
-
-  it('republish() sends the last view without reading the source again', () => {
-    const win = new FakeWindow()
-    let reads = 0
-    const base = sourceOf([acct('amd', 'AMD-A', 'available')])
-    const counting: ChannelSource = {
-      ...base,
-      accounts: () => {
-        reads += 1
-        return base.accounts()
-      },
-    }
-    const handle = openChannel({ source: counting, budget: BUDGET, target: win, pointsProviderId: 'amd' })
-    expect(() => handle.republish()).toThrow(/publish\(\) has not run/)
-    handle.publish()
-    const after = reads
-    handle.republish()
-    expect(reads).toBe(after)
+  it('rebuilds on every call, so the second answer is not the first one frozen', async () => {
+    let accounts: Account[] = [acct('amd', 'AMD-A', 'available')]
+    const source: ChannelSource = { ...sourceOf([]), accounts: () => accounts }
+    const answer = handleOf(openChannel({ source, budget: BUDGET, pointsProviderId: 'amd' }))
+    expect(viewOf(await answer(ENDPOINT_SNAPSHOT, undefined)).badge).toBe('1/1')
+    accounts = [acct('amd', 'AMD-A', 'available'), acct('amd', 'AMD-B', 'available')]
+    expect(viewOf(await answer(ENDPOINT_SNAPSHOT, undefined)).badge).toBe('2/2')
   })
 
   it('looks attached in the view it hands over -- only the browser dashes', () => {
-    const win = new FakeWindow()
     const handle = openChannel({
       source: sourceOf([acct('amd', 'AMD-A', 'disabled')]),
       budget: BUDGET,
-      target: win,
       pointsProviderId: 'amd',
     })
     const view = handle.publish().view
@@ -139,26 +105,34 @@ describe('channel', () => {
     expect(view.level).toBe('red')
   })
 
-  it('close() removes the key and leaves nothing behind', () => {
-    const win = new FakeWindow()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null })
-    handle.publish()
-    handle.close()
-    expect(win.read(CHANNEL_KEY)).toBeUndefined()
-    expect(handle.isPublished()).toBe(false)
+  it('refuses an endpoint it does not have, and names it', async () => {
+    const answer = handleOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
+    expect(await answer('save', { request: { name: 'save', key: 'rc-x' } })).toEqual({
+      ok: false,
+      error: { code: 'multipool/unknown-endpoint', message: 'no endpoint "save"' },
+    })
+    expect(await answer('', undefined)).toEqual({
+      ok: false,
+      error: { code: 'multipool/unknown-endpoint', message: 'no endpoint ""' },
+    })
   })
 
-  it('defaults to the global object, where the page actually looks for it', () => {
-    // No target: the install path the bundle takes in a real profile. globalThis is not a
-    // window and has no setProperty -- a fake that only the test can construct would have
-    // passed while the real one threw, which is exactly what happened once.
-    const handle = openChannel({ source: sourceOf([acct('amd', 'AMD-A', 'available')]), budget: BUDGET })
-    expect('setProperty' in globalThis).toBe(false)
-    const channel = (globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY] as { view: () => IconView }
-    expect(typeof channel.view).toBe('function')
-    expect(channel.view().badge).toBe('1/1')
+  it('close() leaves the channel answering nothing it can honour', async () => {
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
+    const answer = handleOf(handle)
+    handle.publish()
     handle.close()
-    expect((globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
+    expect(handle.isPublished()).toBe(false)
+    const after = await answer(ENDPOINT_COMMAND, { request: { name: 'save', key: 'rc-x' } })
+    expect(after).toEqual({ ok: true, value: { ok: false, reason: COMMAND_CLOSED } })
+  })
+
+  it('registers nothing on globalThis, which both processes can see and neither can share', () => {
+    const before = Object.keys(globalThis).length
+    const handle = openChannel({ source: sourceOf([acct('amd', 'AMD-A', 'available')]), budget: BUDGET })
+    handle.publish()
+    handle.close()
+    expect(Object.keys(globalThis).length).toBe(before)
   })
 })
 
@@ -178,12 +152,16 @@ describe('the command half (T-2-e)', () => {
     return { calls, writes }
   }
 
+  const commandThrough = async (handle: ReturnType<typeof openChannel>, request: unknown) => {
+    const answer = await handleOf(handle)(ENDPOINT_COMMAND, { request })
+    return (answer as { value: unknown }).value
+  }
+
   it('refuses a name it does not have, and does not spend a read on it', async () => {
-    const win = new FakeWindow()
     const log = writesLog()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null, writes: log.writes })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null, writes: log.writes })
     for (const request of [{ name: 'delete' }, { name: 'Save' }, { name: 'save me' }]) {
-      await expect(handle.command(request)).resolves.toEqual({ ok: false, reason: COMMAND_UNKNOWN })
+      expect(await commandThrough(handle, request)).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
     }
     // The value is the store's to judge; a name this file does not know never gets that far.
     expect(log.calls).toEqual([])
@@ -191,43 +169,42 @@ describe('the command half (T-2-e)', () => {
   })
 
   it('refuses a request that is not an object, rather than throwing into the click handler', async () => {
-    const win = new FakeWindow()
     const log = writesLog()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null, writes: log.writes })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null, writes: log.writes })
     for (const request of [null, undefined, 'save', 42, true]) {
-      await expect(handle.command(request)).resolves.toEqual({ ok: false, reason: COMMAND_UNKNOWN })
+      expect(await commandThrough(handle, request)).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
     }
     expect(log.calls).toEqual([])
     handle.close()
   })
 
   it('passes a save on only when it carries the key text', async () => {
-    const win = new FakeWindow()
     const log = writesLog()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null, writes: log.writes })
-    expect(await handle.command({ name: 'save', key: 4242 })).toEqual({ ok: false, reason: COMMAND_MALFORMED })
-    expect(await handle.command({ name: 'save' })).toEqual({ ok: false, reason: COMMAND_MALFORMED })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null, writes: log.writes })
+    expect(await commandThrough(handle, { name: 'save', key: 4242 })).toEqual({ ok: false, reason: COMMAND_MALFORMED })
+    expect(await commandThrough(handle, { name: 'save' })).toEqual({ ok: false, reason: COMMAND_MALFORMED })
     expect(log.calls).toEqual([])
-    const outcome = await handle.command({ name: 'save', key: 'rc-typed' })
+    expect(await commandThrough(handle, { name: 'save', key: 'rc-typed' })).toEqual({
+      ok: true,
+      status: { present: true, layer: 'file' },
+      message: null,
+    })
     expect(log.calls).toEqual(['save rc-typed'])
-    expect(outcome.ok).toBe(true)
     handle.close()
   })
 
   it('says no credential service rather than pretending a typo', async () => {
-    const win = new FakeWindow()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null })
-    expect(await handle.command({ name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_NO_WRITES })
-    expect(await handle.command({ name: 'forget' })).toEqual({ ok: false, reason: COMMAND_NO_WRITES })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
+    expect(await commandThrough(handle, { name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_NO_WRITES })
+    expect(await commandThrough(handle, { name: 'forget' })).toEqual({ ok: false, reason: COMMAND_NO_WRITES })
     handle.close()
   })
 
   it('takes the write half late, because ctx.inject resolves after openChannel', async () => {
-    const win = new FakeWindow()
     const log = writesLog()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
     handle.offer(log.writes)
-    expect(await handle.command({ name: 'forget' })).toEqual({
+    expect(await commandThrough(handle, { name: 'forget' })).toEqual({
       ok: true,
       status: { present: false },
       message: null,
@@ -237,15 +214,14 @@ describe('the command half (T-2-e)', () => {
   })
 
   it('refuses after close(), and ignores an offer made after it', async () => {
-    const win = new FakeWindow()
     const log = writesLog()
-    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, target: win, pointsProviderId: null })
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
     handle.offer(log.writes)
     handle.close()
-    expect(await handle.command({ name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_CLOSED })
+    expect(await commandThrough(handle, { name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_CLOSED })
     const late = writesLog()
     handle.offer(late.writes)
-    expect(await handle.command({ name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_CLOSED })
+    expect(await commandThrough(handle, { name: 'save', key: 'rc-x' })).toEqual({ ok: false, reason: COMMAND_CLOSED })
     // A closed channel writes nothing, whoever offered what and whenever.
     expect(log.calls).toEqual([])
     expect(late.calls).toEqual([])

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildSnapshot, createFakeClock, PROVIDER_ORDER, type Account } from '@dsh-multipool/core'
 import { channelSourceFrom, NOTHING_READ } from '../src/source.js'
-import { apply, CHANNEL_KEY } from '../src/index.js'
+import type { ConnectionContext } from '../src/index.js'
+import { apply, CHANNEL, ENDPOINT_SNAPSHOT } from '../src/index.js'
 import type { ChannelSource } from '../src/channel.js'
 
 const NOW = Date.UTC(2026, 11, 1, 1, 0, 0)
@@ -78,23 +79,41 @@ describe('the host half publishes what it has read, and nothing it has not', () 
     expect(Object.keys(source.usage())).toEqual([])
   })
 
-  it('apply() puts a channel on the global object and close() takes it away', () => {
+  it('apply() serves a route and close() takes it away', async () => {
     const effects: Array<() => void> = []
+    const routes = new Map<string, (endpoint: string, payload: unknown) => Promise<unknown>>()
     const ctx = {
       effect(callback: () => () => void) {
         const dispose = callback()
         effects.push(dispose)
         return dispose
       },
+      inject(names: string[], callback: (child: ConnectionContext) => void) {
+        expect(names).toEqual(['connection'])
+        callback({
+          connection: {
+            rpc: {
+              handle(channel: string, handler: (endpoint: string, payload: unknown) => Promise<unknown>) {
+                routes.set(channel, handler)
+                return () => {
+                  routes.delete(channel)
+                }
+              },
+            },
+          },
+        })
+        return () => undefined
+      },
     }
     const clock = createFakeClock({ now: NOW })
     apply(ctx, { nowMs: () => clock.now() })
-    const installed = (globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY] as {
-      readonly view: () => { readonly attached: boolean }
-    }
-    expect(typeof installed.view).toBe('function')
-    expect(installed.view().attached).toBe(true)
+    const served = routes.get(CHANNEL)
+    expect(typeof served).toBe('function')
+    // The route answers the icon view, and that view is attached: the window key this replaced
+    // could never be seen from the other process, whatever this boolean said.
+    const answer = (await served?.(ENDPOINT_SNAPSHOT, undefined)) as { ok: boolean; value: { attached: boolean } }
+    expect(answer.ok).toBe(true)
+    expect(answer.value.attached).toBe(true)
     for (const dispose of effects) dispose()
-    expect((globalThis as unknown as Record<string, unknown>)[CHANNEL_KEY]).toBeUndefined()
   })
 })

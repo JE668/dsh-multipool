@@ -1,8 +1,8 @@
 /**
  * Host half of dsh-multipool.
  *
- * The plugin registers one channel (packages/plugin-dsh/src/channel.ts) on the page's window and
- * hands it the facts it has. Scheduling, the key store and the local proxy arrive in their own
+ * The plugin serves one RPC channel (packages/plugin-dsh/src/channel.ts) to the page and hands
+ * it the facts it has. Scheduling, the key store and the local proxy arrive in their own
  * tasks; until they do, those facts are "nothing has been read yet", which source.ts spells as
  * `undefined` rather than as zero.
  *
@@ -10,16 +10,21 @@
  *
  * - No `inject` on purpose. `slots` lives in the browser half (dsh-cordis-client-runner), so
  *   naming it here parked this entry in "pending (waiting for service: slots)" forever -- the
- *   host fiber would never see it, and the icon never got a chance to ask for the sidebar slot.
- *   `apply` reads nothing but `ctx.effect`, which every context has.
+ *   host fiber would never see it. `apply` reads nothing but `ctx.effect` and `ctx.inject`, which
+ *   every context has.
+ * - `connection` is asked for with `ctx.inject`, never listed in `inject`, for the same reason
+ *   `credentials` is: the icon has to exist on a DSH with no RPC carrier to hang it on, and answer
+ *   dashes there. Where one does exist, `connection.rpc.handle(CHANNEL, handleOf(...))` registers
+ *   one prefix route on the web server this process already serves -- the registration api-gateway
+ *   makes for `/api`, and the only place authentication is going to come from.
  * - `credentials` is asked for with `ctx.inject`, never listed in `inject`, and takes no part in
  *   whether this plugin activates (T-2-e). A key is what makes it able to send, not what makes it
  *   load: a DSH built without dsh-credentials-local (or with it disabled) must still show the icon,
  *   and the icon's honest answer there is "no credential service", not a refused plugin. The
  *   child's status is reported through `onKeyStatus` and nothing else in this file waits on it.
- * - `apply(ctx)` opens the channel inside `ctx.effect`, so disabling the plugin disposes it and
- *   leaves no `window` key behind, and publishing stays pull-based: `apply` opens, it does not
- *   publish. Nothing here schedules a timer of its own (docs/05 section 4.3).
+ * - `apply(ctx)` opens the channel and registers the route inside `ctx.effect`, so disabling the
+ *   plugin disposes it and leaves no route behind, and publishing stays pull-based: `apply` opens,
+ *   it does not publish. Nothing here schedules a timer of its own (docs/05 section 4.3).
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
@@ -27,6 +32,8 @@
 import { createSystemClock } from '@dsh-multipool/core'
 import {
   AMD_KEY_REF_NAME,
+  CHANNEL,
+  handleOf,
   openChannel,
   type ChannelSource,
   type ChannelWrites,
@@ -97,11 +104,47 @@ const writesFor = (seam: CredentialSeam): ChannelWrites => ({
 })
 
 
+/** `connection`'s service name (dsh-client-connection: super(ctx, 'connection')). */
+export const CONNECTION_SERVICE = 'connection'
+
+/** What an injection hands back: whichever of the named services the context has. */
+interface InjectedServices {
+  readonly credentials?: CredentialSeam
+  readonly connection?: {
+    readonly rpc: {
+      readonly handle: (
+        channel: string,
+        handler: (endpoint: string, payload: unknown) => Promise<unknown>,
+      ) => () => void
+    }
+  }
+}
+
+export type ConnectionContext = {
+  readonly connection?: InjectedServices['connection']
+}
+
+/**
+ * ctx.inject, or a no-op when the context predates the mixin.
+ *
+ * Both of apply()'s injections go through here, so "this DSH has no inject" stays one branch
+ * instead of two, and a context that cannot inject is still a context the icon activates on.
+ */
+function injectOf(
+  ctx: { inject?(names: string[], callback: (child: InjectedServices) => void): () => void },
+  names: string[],
+  callback: (child: InjectedServices) => void,
+): () => void {
+  const inject = ctx.inject
+  if (typeof inject !== 'function') return () => undefined
+  return inject.call(ctx, names, callback)
+}
+
 /** The channel's lifetime is the plugin's lifetime. */
 export function apply(
   ctx: {
     effect(callback: () => () => void): () => void
-    inject?(names: string[], callback: (child: KeyContext) => void): () => void
+    inject?: (names: string[], callback: (child: InjectedServices) => void) => () => void
   },
   options: HostOptions = {},
 ): () => void {
@@ -111,14 +154,24 @@ export function apply(
     const budget: IconBudget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES }
     const channel = openChannel({ source, budget })
     const drops: Array<() => void> = []
+    // The route comes first because it is the only thing that makes the icon reachable at all: an
+    // opened channel nobody can call is a handle dropped on the floor. Both go through the child
+    // context's effect, so the disposer list below is what makes a disable leave no prefix behind.
+    //
+    // Asked for, never listed in `inject`: on a DSH with no connection service this plugin must
+    // still activate and still draw the icon, whose honest answer there is the dash.
+    drops.push(injectOf(ctx, [CONNECTION_SERVICE], child => {
+      const connection = child.connection
+      if (connection === undefined) return
+      drops.push(connection.rpc.handle(CHANNEL, handleOf(channel)))
+    }))
     // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
     // the page's listener table, which is what the comment above "no inject" promises in practice.
     const onKeyStatus = options.onKeyStatus
-    const inject = ctx.inject
     // Neither a reader nor a writer means no listener: the injection below is the one thing that would
     // put this plugin in the page's event table with nothing to do there.
-    if (typeof inject === 'function' && (onKeyStatus !== undefined || options.acceptsWrites === true)) {
-      drops.push(inject.call(ctx, [CREDENTIALS_SERVICE], child => {
+    if (onKeyStatus !== undefined || options.acceptsWrites === true) {
+      drops.push(injectOf(ctx, [CREDENTIALS_SERVICE], child => {
         const seam = child.credentials
         if (seam === undefined) return
         if (onKeyStatus !== undefined) drops.push(watchKeyStatus(child, onKeyStatus))
@@ -150,13 +203,15 @@ export {
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyLayer, type KeyState, type KeyWrite } from './key-store.js'
 
 export {
-  CHANNEL_KEY,
+  CHANNEL,
+  ENDPOINT_COMMAND,
+  ENDPOINT_SNAPSHOT,
   buildPublishedView,
+  handleOf,
   openChannel,
   type Channel,
   type ChannelHandle,
   type ChannelSource,
-  type ChannelTarget,
   type IconBudget,
   type OpenChannelOptions,
   type PublishedView,
