@@ -72,6 +72,9 @@ export {
   type AmdDiagnostic,
 } from './amd-error.js'
 
+export { accountAfterVerdict, cooldownKeyOf } from './cooldown.js'
+
+
 export {
   CATALOG_REFRESH_MS,
   fetchCatalog,

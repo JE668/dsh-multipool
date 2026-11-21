@@ -1,6 +1,6 @@
 # 第一批缺口清点
 
-对第一批 11 项（`docs/08-START-PROMPT.md`）逐条实测，状态截至 `2491911`。
+对第一批 11 项（`docs/08-START-PROMPT.md`）逐条实测，状态截至 `04fd646`。
 写这份的依据是代码与测试，不是任务清单的自述。
 
 ## 四种状态，不互相代替
@@ -19,7 +19,7 @@
 | 夹具 | 在批内 | 状态 | 依据 |
 |---|---|---|---|
 | A-01 ~ A-06 | 是 | 有测试 | `packages/core/test/amd-*.test.ts` |
-| **A-07** | 是 | **无实现** | 见下 §1 |
+| **A-07** | 是 | 收窄后仍**未接线** | 见下 §1 |
 | A-08 ~ A-18 | 是 | 有测试 | 同上 |
 | A-19 | 否（依赖 T-2-c） | 展示侧无实现 | 见下 §2 |
 | U-01 ~ U-04 | 是 | 有测试 | `packages/core/test/amd-*.test.ts` |
@@ -30,24 +30,29 @@
 | Z-02 | 否 | 实测通过 | 见下 §4 |
 | Z-04 ~ Z-06 | 否 | 未做 | 迁移 / 端口热生效 / 卸载干净 |
 
-在批内 21 条里，**20 条有测试，1 条（A-07）无实现**。
+在批内 21 条里，**20 条有测试，1 条（A-07）有映射层但调度器不调它**。
 
-## §1 A-07 是活没干，不是少个测试
+## §1 A-07 收窄了，收窄后那一半也没接线
 
 夹具写的是「3 个账号同出口 IP，账号 2 触到 IP 限流 ⇒ **三个账号** 60s 内都不发请求」。
+这一句在 `04fd646` 里被收窄成「**那一个**账号 60s 内不发请求，原因记作 `rpm_ip` 而不是 `rpm_key`」，
+理由写在 `docs/07-ACCEPTANCE.md` 的 A-07 引用块里：本机看不到自己的出口 IP 后面共了几个账号，猜错的代价是把一个本可用的账号也停掉。
 
-追到现实现：
+收窄后的四半：
 
-- `packages/core/src/amd-error.ts:192` 把 `ip_rate_limit_exceeded` 归类成 `'rpm_ip'`。整个 IP 维度的全部代码。
-- `packages/core/src/scheduler.ts:58` 的 `MIGRATING_RATE_KINDS` 拿它算迁移权重，不构成跨账号联动。
-- `packages/core/src/snapshot.ts:249-256` 的冷却表一遍 `for (const account of accounts)` 扫账号，
-  判据只有 `account.coolUntil`。没有"IP 维度"这种容器，连能装它的形状都没有。
-- 全仓无出口 IP 建模，无横幅注册点。
+| 半张 | 内容 | 现在 | 证据 |
+|---|---|---|---|
+| 分类 | `ip_rate_limit_exceeded` 归为 `rpm_ip` | 已做 | `packages/core/src/amd-error.ts:192`；A-04 已测 |
+| 映射 | 把 `rpm_ip` 写进**这一个**账号的 `cooldownReason`，长度就是上游的 `Retry-After` | 已开一层 | `packages/core/src/cooldown.ts`；`packages/core/test/amd-cooldown.test.ts` 5 例 |
+| 接线 | 调度器在拿到 verdict 后调 `accountAfterVerdict` | **未做** | 全仓只有定义与测试，无调用方 |
+| 广播 | 同出口 IP 的其他账号一起冷却 | **不做** | `04fd646` 的收窄理由 |
 
-所以 `rpm_ip` 现在只是一个**名字**：给单个账号的冷却原因贴的标签。夹具的三句结论没有一句有代码路径。
+所以 `rpm_ip` 仍只是一个**名字**：给单个账号的冷却原因贴的标签。现在多了一行代码会把它贴上去，
+但**这一行没有人调**——调度器仍在手写 fixture，`packages/core/test/amd-snapshot.test.ts` 里那个
+`cooldownReason: 'rpm_key'` 是全仓唯一一处被真正赋值的地方。“有了映射层”不等于“链路成立”，两者差的是一次接线动作。
 
 同时暴露一处归属缺失：`docs/06-TASKS.md` 把 A-07 挂在 `[T-1-b/T-1-e]` 下，但 T-1-b 只要求
-「分类器把 code 归到 rpm_ip」（做了），T-1-e 没提跨账号熔断。**没有任何任务说自己要做 A-07 的后半句。**
+「分类器把 code 归到 rpm_ip」（做了），T-1-e 没提跨账号熔断。**没有任何任务说自己要做 A-07 的后半句**。
 
 ## §2 A-19 数据侧可辨，展示侧没载体
 
