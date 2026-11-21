@@ -250,6 +250,12 @@ NIM / SenseNova 的额度字段为 `unknown` → HTML 文本断言出现 `—` �
 ### C-03 Base URL 只读 `[T-2-d]`
 断言五家 Base URL 输入框 `disabled`，仅可复制；不存在「自定义 baseURL」保存路径（防错配到实例服务路径，02 §1.2）。
 
+### C-05 只读候选不代替 `[T-2-e]`
+**Given** 凭据层已有 `AMD_API_KEY`（`source:file`），用户在设置页输入一个新 Key 并点「校验」。
+**Then** `GET /v1/usage` 读到的值只进候选展示（`source:api` + `fetchedAt`），**不**写入 `ctx.credentials`；用户再点「保存」才写。
+**Given** 保存前校验返回 429 或网络错。
+**Then** 不拒绝保存，仅标记「未能校验」；**不**把上游的接不通当成 Key 无效。
+
 ---
 
 ## D · 保留与存储

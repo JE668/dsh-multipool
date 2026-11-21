@@ -117,6 +117,12 @@
 - `rejected_key`：填 sk- 或填实例域名 ⇒ 红字拒绝。
 - **验收**：C-01 ~ C-03
 
+### T-2-e 账号存取层（Key 存哪，谁读它）`dep: T-2-d`
+- Host：`ctx.credentials.set(ref, value)` 落盘、`ctx.credentials.resolve(ref)` 读回，`ref` 由本插件 Config 的 `refs: string[]` 指名；Config 里**只存引用名，不存 Key 本体**（03）。
+- 不缓存：`resolve` 每次操作重新调一次，凭据层自己的文件锁 / 原子写 / 热发布负责一致性（b78）。
+- 空串拒写走 `unset`，不写 `''`；Key 不出现在任何日志、错误串、快照线格式里（`scrubSecrets` 已兜住）。
+- **验收**：U-04（日志无完整 Key）、C-02（`validateAmdKey` 在写盘前先拒）
+
 ---
 
 ## 阶段 3 · BI 看板（AMD 数据先打通）`dep: T-2-a`
