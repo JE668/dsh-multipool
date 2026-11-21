@@ -17,6 +17,7 @@ const core = await import('../dist/index.js')
 // answer on purpose. A bundle that requires a second module is one client-modules cannot serve
 // ("missed the module table"), so handing it everything here would hide the failure this file
 // exists to catch -- it has to run against exactly what a page provides.
+const chr10 = String.fromCharCode(10)
 const fakeReact = {
   // React spreads the remaining arguments, so the drawer's two-element call has to arrive as an
   // array; reading them positionally as `kids` silently dropped the badge.
@@ -156,4 +157,29 @@ test('still prints 0/0 once the host answers with an empty pool', () => {
   })
   assert.equal(answered.attached, true)
   assert.equal(answered.badge, '0/0')
+})
+
+test('the panel prints the three lines the icon shows, word for word', () => {
+  // The icon and the panel subscribe to the same channel, so the temptation is to test them
+  // apart and trust the seam. The seam is where the bug lives: one could read lines.accounts
+  // and the other lines.points, both be "subscribed", and leave a reader with a panel that
+  // disagrees with the dot and no way to say which one lied.
+  delete globalThis.window['@dsh-multipool/plugin-client/view']
+  const { componentOf } = registrar()
+  const Panel = componentOf('main')[0]
+  const Icon = componentOf('sidebar.panellist')[0]
+
+  const panel = Panel({})
+  const icon = Icon({ size: 24, active: false })
+
+  // The stub createElement is React-shaped -- (type, props, ...kids) -- so the panel element
+  // holds its children as one array in kids[0], and the first of those is the title div.
+  const [, rowsBox] = panel.kids[0]
+  const rows = rowsBox.kids[0].map((row) => row.kids[0])
+  assert.equal(rows.length, 3)
+  assert.ok(rows[0].includes('\u2014/\u2014'))
+  assert.ok(rows[1].includes('host'))
+  assert.ok(rows[2].includes('pts'))
+  assert.ok(!rows.join('').match(/[0-9]/))
+  // And the tooltip is the one place both can be wrong together, so it says nothing on its own:
 })

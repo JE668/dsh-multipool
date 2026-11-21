@@ -312,6 +312,19 @@ window.__ModuleLoader__.load({
      * in the tooltip. So it says the one true thing it knows and stops.
      */
     function MultiPoolPanel() {
+      // Same channel, same absence rule as the rail icon: no host, emptyView, and emptyView
+      // carries dashes rather than zeros. One snapshot, two views.
+      const pair = React.useState(emptyView)
+      const view = pair[0]
+      const setView = pair[1]
+
+      React.useEffect(function () {
+        const channel = window[CHANNEL]
+        if (channel === undefined || channel === null) return undefined
+        setView(channel.view())
+        return channel.subscribe(setView)
+      }, [])
+
       const styles = {
         root: {
           display: 'flex',
@@ -327,22 +340,40 @@ window.__ModuleLoader__.load({
           fontSize: 15,
           fontWeight: 600,
         },
-        body: {
-          color: 'var(--dsw-alias-label-secondary)',
+        line: {
+          color: 'var(--dsw-alias-label-primary)',
+          whiteSpace: 'pre-wrap',
+          fontVariantNumeric: 'tabular-nums',
+        },
+        note: {
+          color: 'var(--dsw-alias-label-tertiary)',
+          fontSize: 12,
         },
       }
+
+      const rows = [
+        React.createElement('div', { key: 'accounts', style: styles.line, 'data-multipool-line': 'accounts' }, view.lines.accounts),
+        React.createElement('div', { key: 'rpm', style: styles.line, 'data-multipool-line': 'rpm' }, view.lines.rpm),
+        React.createElement('div', { key: 'points', style: styles.line, 'data-multipool-line': 'points' }, view.lines.points),
+      ]
+
+      const children = [
+        React.createElement('div', { key: 'title', style: styles.title },
+          'AMD \u8d26\u53f7\u6c60'),
+        React.createElement('div', { key: 'rows' }, rows),
+      ]
+
       return React.createElement(
         'div',
-        { style: styles.root, 'data-multipool-panel': 'true' },
-        React.createElement('div', { style: styles.title }, 'AMD \u8d26\u53f7\u6c60'),
-        React.createElement(
-          'div',
-          { style: styles.body },
-          '\u672c\u673a\u8fd8\u6ca1\u6709\u8bfb\u5230\u4efb\u4f55\u8d26\u53f7\u3002\u6dfb\u52a0\u4e00\u4e2a AMD Token Factory \u7684 API Key \u4e4b\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u8d26\u53f7\u7684\u53d6\u7528\u72b6\u6001\u4e0e\u4f59\u91cf\u3002',
-        ),
+        {
+          style: styles.root,
+          'data-multipool-panel': 'true',
+          'data-multipool-level': view.level,
+          'data-multipool-attached': view.attached ? 'true' : 'false',
+        },
+        children,
       )
     }
-
     return {
       // docs/05 section 2: inject so the slot owner can call us again after a remount, and
       // register inside ctx.effect so disabling the plugin unregisters instead of leaving a
