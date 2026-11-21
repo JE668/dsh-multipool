@@ -305,6 +305,7 @@ DSH 插件 Host 侧可能只有一个进程，但用户会**多开 DSH 窗口/�
 | S-04 | AMD 双账号，3 秒内发 50 次 | 前 40 快速过，后 10 排队；**仍不出现**上游 429（允许 latency 高） |
 | S-05 | 模拟上游对单 Key 提前 30 RPS 返 429 | 该 Key 进入冷却 60s±15%；**其他 Key 不受影响** |
 | S-06 | 模拟上游返 `ip_rate_limit_exceeded` | **同出口 IP 全部 Key** 冷却 60s；不同 IP Key 不受影响 |
+| S-06’ | 同上，本实现 | 撞到 `ip_rate_limit_exceeded` 的**那一个** Key 冷却，原因记作 `rpm_ip`，时长取上游 `Retry-After`；其他 Key 不连带（无法知道它们是否同出口） |
 | S-07 | 会话 A 已绑定 Key-1，Key-1 429 但 Key-2 空闲 | **A 仍等 Key-1**（除非 Retry-After > migrateThreshold）；迁移计数不变 |
 | S-08  persists | 会话 A 已绑定 Key-1，Key-1 返回 `daily_quota`（Retry-After 到 reset） | A **迁到** Key-2；日志记录迁移原因 |
 | S-09 | SenseNova 429 | 冷却 30s 起、×2 递增、封顶 300s、带抖动；**降速 ×0.5**；第 3 次才迁移 |
