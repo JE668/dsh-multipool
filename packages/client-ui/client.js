@@ -128,18 +128,14 @@ window.__ModuleLoader__.load({
     // The one command the page sends, and what it hands back: a refusal from the host (which
     // resolves and carries the store's own words), or a failure to reach one.
     //
-    // Three different things can go wrong here and they say three different words, because the
-    // one thing a form must not do is turn "your key was refused" and "this build cannot save a
-    // key" into the same grey sentence:
-    //
-    //   NO_WRITES       -- no connection service, or no rpc on it: the host predates T-2-e
-    //   COMMAND_FAILED  -- the call itself threw or rejected: the transport, not the store
-    //
-    // A refusal from the host itself is neither. It arrives as a resolved envelope carrying
-    // ok: true -- the call was answered -- with the store's own verdict inside, and passes
-    // through untouched, `message` included.
+    // One word for both ways of not reaching it. A page cannot act on the difference -- "no
+    // credential service" and "the call threw" support the same single action, try again once
+    // whatever was wrong is fixed -- and two words meant two branches for a caller to keep, or (as
+    // happened) one branch quietly folded into the other and a test that could no longer tell which
+    // path it had walked. The host's own refusal is the one verdict that survives, because that is
+    // the one a form can put next to the field: it arrives as a resolved envelope with ok: true --
+    // the call was answered -- and the store's words inside, so it passes through untouched.
     var NO_WRITES = 'no credential service'
-    var COMMAND_FAILED = 'command failed'
 
     /** The rpc face of the connection service, or undefined on a host that has none. */
     function rpcOf() {
@@ -153,7 +149,7 @@ window.__ModuleLoader__.load({
     function failed(thrown) {
       return {
         ok: false,
-        reason: COMMAND_FAILED,
+        reason: NO_WRITES,
         message: thrown instanceof Error ? thrown.message : String(thrown),
       }
     }
@@ -175,21 +171,11 @@ window.__ModuleLoader__.load({
     }
 
     function commandOf(request) {
-      if (rpcOf() === undefined) return Promise.resolve({ ok: false, reason: NO_WRITES })
-      // A call that threw on the way out is the transport breaking, not the store refusing: the
-      // service was there and the request reached the edge of it, so this says "failed", not "older
-      // than T-2-e". Only the missing service itself earns NO_WRITES.
       return ask(ENDPOINT_COMMAND, { request: request }).then(
         function (outcome) {
-          return outcome === undefined ? { ok: false, reason: NO_WRITES } : outcome
+          return outcome === undefined ? failed(new Error(NO_WRITES)) : outcome
         },
-        function (thrown) {
-          return {
-            ok: false,
-            reason: COMMAND_FAILED,
-            message: thrown instanceof Error ? thrown.message : String(thrown),
-          }
-        },
+        failed,
       )
     }
 
@@ -199,8 +185,10 @@ window.__ModuleLoader__.load({
         function (view) {
           return view === undefined || view === null ? emptyView() : view
         },
-        function (thrown) {
-          return { ok: false, reason: COMMAND_FAILED, message: thrown instanceof Error ? thrown.message : String(thrown) }
+        function () {
+          // No host, no answer, no story to tell: the icon's own empty pool already says "nothing
+          // read yet", and a reason string here would only be a second place to keep it in sync.
+          return emptyView()
         },
       )
     }

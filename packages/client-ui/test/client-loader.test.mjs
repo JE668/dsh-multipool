@@ -163,16 +163,15 @@ test('a call that throws or rejects comes back as a refusal, not as a rejected p
   }
   const first = await throwing.commandOf({ name: 'forget' })
   assert.equal(first.ok, false)
-  // "command failed" and not "no credential service": the service is here and the call reached it,
-  // and broke there. Both arms of commandOf() (a synchronous throw and a rejected promise) say the
-  // same word, or a page would have to know which kind of breakage it was looking at.
-  assert.equal(first.reason, 'command failed')
+  // One word, and the throw's own words beside it: the page has one action to offer either way, and
+  // keeping the message is what lets a person say which of the two they saw.
+  assert.equal(first.reason, 'no credential service')
   assert.equal(first.message, 'no transport')
 
   globalThis.window.connection = { rpc: { call: () => Promise.reject(new RangeError('socket closed')) } }
   const second = await factory().commandOf({ name: 'forget' })
   assert.equal(second.ok, false)
-  assert.equal(second.reason, 'command failed')
+  assert.equal(second.reason, 'no credential service')
   assert.equal(second.message, 'socket closed')
 })
 
