@@ -111,6 +111,43 @@ test('paints idle with three dashes when no host channel exists', () => {
   assert.ok(badge.props.style.border.includes('--dsw-alias-state-idle-primary'))
 })
 
+test('a channel with no command() is a host too old, not a save that failed', async () => {
+  globalThis.window = {
+    __ModuleLoader__: { load: spec => { captured = spec } },
+    ['@dsh-multipool/plugin-client/view']: { view: () => undefined, subscribe: () => () => undefined },
+  }
+  const plugin = factory()
+  // `ok: false` is all a click handler can act on; the reason is what tells "your key was refused"
+  // from "this build has nowhere to put a key", and only the first one is worth retrying.
+  const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.reason, 'no credential service')
+})
+
+test('a command that throws comes back as a refusal, not as a rejected promise', async () => {
+  const calls = []
+  globalThis.window = {
+    __ModuleLoader__: { load: spec => { captured = spec } },
+    ['@dsh-multipool/plugin-client/view']: {
+      view: () => undefined,
+      subscribe: () => () => undefined,
+      command: request => {
+        calls.push(request)
+        throw new TypeError('command is not a function')
+      },
+    },
+  }
+  const plugin = factory()
+  const outcome = await plugin.commandOf({ name: 'forget' })
+  assert.deepEqual(calls, [{ name: 'forget' }])
+  assert.equal(outcome.ok, false)
+  // "command failed" and not "no credential service": this channel exists, the call reached it, and
+  // broke there. Both arms of commandOf() (a synchronous throw and a rejected promise) say the
+  // same word, or a page would have to know which kind of breakage it was looking at.
+  assert.equal(outcome.reason, 'command failed')
+  assert.equal(outcome.message, 'command is not a function')
+})
+
 test('still prints 0/0 once the host answers with an empty pool', () => {
   const answered = core.iconViewOf({
     snapshot: core.emptySnapshot(),

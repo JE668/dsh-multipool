@@ -119,6 +119,46 @@ window.__ModuleLoader__.load({
         attached: false,
       })
     }
+    // The one command the page sends, and what it hands back: a refusal from the host (which
+    // resolves and carries the store's own words), or a failure to reach one.
+    //
+    // Three different things can go wrong here and they say three different words, because the
+    // one thing a form must not do is turn "your key was refused" and "this build cannot save a
+    // key" into the same grey sentence:
+    //
+    //   NO_WRITES       -- no channel, or no command() on it: the host predates T-2-e
+    //   COMMAND_FAILED  -- command() threw, or rejected: the host is there and the call broke
+    //
+    // A refusal from the host itself is neither: it resolves, with `ok: false` and the store's
+    // own reason, and passes through untouched including `message`.
+    var NO_WRITES = 'no credential service'
+    var COMMAND_FAILED = 'command failed'
+
+    function commandOf(request) {
+      var channel = typeof window === 'undefined' ? undefined : window[CHANNEL]
+      if (channel === undefined || channel === null) {
+        return Promise.resolve({ ok: false, reason: NO_WRITES })
+      }
+      if (typeof channel.command !== 'function') {
+        return Promise.resolve({ ok: false, reason: NO_WRITES })
+      }
+      try {
+        return Promise.resolve(channel.command(request)).catch(function (thrown) {
+          return {
+            ok: false,
+            reason: COMMAND_FAILED,
+            message: thrown instanceof Error ? thrown.message : String(thrown),
+          }
+        })
+      } catch (thrown) {
+        return Promise.resolve({
+          ok: false,
+          reason: COMMAND_FAILED,
+          message: thrown instanceof Error ? thrown.message : String(thrown),
+        })
+      }
+    }
+
     // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a
     // light/dark switch repaints them without this file knowing a single colour value.
     var LEVEL_TOKEN = {
@@ -308,6 +348,10 @@ window.__ModuleLoader__.load({
       // register inside ctx.effect so disabling the plugin unregisters instead of leaving a
       // ghost behind for the next enable to paint over (06 T-2-b DoD).
       inject: ['slots'],
+      // Handed out for the parity test only: nothing on the page can see this property, and the
+      // loader asks the factory for `inject`/`apply`. Without it the page's copy of commandOf()
+      // would be the one function in this file no test ever calls.
+      commandOf: commandOf,
       apply(ctx) {
         // The icon and the panel are one feature, not two: sidebar's README, the "global panel entry" section,
         // says a sidebar id addresses the main keyed slot's entry of that same id, and layout
