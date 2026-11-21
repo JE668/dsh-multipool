@@ -4,10 +4,13 @@ import {
   AMD_KEY_REF,
   CREDENTIALS_SERVICE,
   KEY_UPDATED_EVENT,
+  clearKeyStatus,
   readKeyStatus,
   watchKeyStatus,
+  writeKeyStatus,
   type KeyStatus,
 } from '../src/credentials.js'
+import type { CredentialSeam } from '../src/key-store.js'
 
 type Info = { configured: boolean; source?: string; writable: boolean; masked?: string }
 
@@ -110,5 +113,73 @@ describe('re-reading follows the seam, not a timer', () => {
     watchKeyStatus({}, status => seen.push(status))
     await flush()
     expect(seen).toEqual([{ kind: 'no-service' }])
+  })
+})
+
+describe('the write path, driven by a form and by nothing else', () => {
+  function seamWith(
+    store: { value?: string },
+    options: { refuse?: boolean } = {},
+  ): CredentialSeam & { writes: string[] } {
+    const writes: string[] = []
+    return {
+      writes,
+      resolve: async () => (store.value === undefined ? undefined : { value: store.value, source: 'file' }),
+      describe: async () =>
+        store.value === undefined ? { configured: false, writable: true } : { configured: true, source: 'file', writable: true },
+      set: async (_ref: string, value: string) => {
+        if (options.refuse === true) throw new Error('credentials-local is disposed: cannot set "AMD_API_KEY"')
+        writes.push('set ' + value)
+        store.value = value
+      },
+      unset: async () => {
+        writes.push('unset')
+        store.value = undefined
+      },
+    }
+  }
+
+  it('never reaches the seam with a refused key, and says which rule refused it', async () => {
+    const store: { value?: string } = {}
+    const seam = seamWith(store)
+    const outcome = await writeKeyStatus({ credentials: seam }, 'sk-' + 'secret')
+    expect(seam.writes).toEqual([])
+    expect(store.value).toBeUndefined()
+    expect(outcome.message ?? '').toContain('Token Factory')
+    expect(outcome.message ?? '').not.toContain('secret')
+    expect(outcome.status).toEqual({ kind: 'read', state: { kind: 'absent' }, seam: expect.anything() })
+  })
+
+  it('stores a good key and then reads it back, so the claim is the read', async () => {
+    const store: { value?: string } = {}
+    const seam = seamWith(store)
+    const key = 'rc-' + 'c'.repeat(32)
+    const outcome = await writeKeyStatus({ credentials: seam }, key)
+    expect(seam.writes).toEqual(['set ' + key])
+    expect(outcome.message).toBeNull()
+    expect(outcome.status).toEqual({ kind: 'read', state: { kind: 'configured', layer: 'file' }, seam: expect.anything() })
+  })
+
+  it('reports the read even when the store would not take the value', async () => {
+    const store: { value?: string } = {}
+    const seam = seamWith(store, { refuse: true })
+    const outcome = await writeKeyStatus({ credentials: seam }, 'rc-' + 'd'.repeat(32))
+    expect(seam.writes).toEqual([])
+    expect(outcome.message ?? '').toContain('credentials-local is disposed')
+    // Nothing was stored, and the answer says so instead of claiming the write landed.
+    expect(outcome.status).toEqual({ kind: 'read', state: { kind: 'absent' }, seam: expect.anything() })
+  })
+
+  it('forgets through unset and reports absent, without a service it says so', async () => {
+    const store: { value?: string } = { value: 'rc-' + 'e'.repeat(32) }
+    const seam = seamWith(store)
+    const cleared = await clearKeyStatus({ credentials: seam })
+    expect(seam.writes).toEqual(['unset'])
+    expect(store.value).toBeUndefined()
+    expect(cleared.message).toBeNull()
+    expect(cleared.status).toEqual({ kind: 'read', state: { kind: 'absent' }, seam: expect.anything() })
+
+    const withoutService = await clearKeyStatus({})
+    expect(withoutService).toEqual({ status: { kind: 'no-service' }, message: null })
   })
 })

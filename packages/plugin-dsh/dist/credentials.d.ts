@@ -70,4 +70,40 @@ export declare function readKeyStatus(context: {
  * still reads once and returns; it just has nothing to listen to afterwards.
  */
 export declare function watchKeyStatus(context: KeyContext, onRead: (status: KeyStatus) => void, ref?: string): () => void;
+/**
+ * What a write attempt ends as: the state to render, and one sentence for the row that made it.
+ *
+ * `state` is the re-read KeyState and not what `saveAmdKey` returned, because those answer
+ * different questions -- saveAmdKey says the store took the value, this says the seam will hand it
+ * back. Only the second belongs on a page that reintroduces itself from `describe` on next load. A
+ * successful save whose re-read still answers absent is therefore reported as absent, with a note.
+ */
+export interface KeyWriteOutcome {
+    readonly status: KeyStatus;
+    /** Null when nothing was written: a refusal, or no service to write to. */
+    readonly message: string | null;
+}
+/**
+ * The write path, called by a form and by nothing else.
+ *
+ * Two deliberate choices. A refusal never reaches the seam -- key-store.ts throws before writing and
+ * says why in docs/02's words -- so `key` here is still the scrubber's job and not a new validation
+ * layer's. And a confirm read that throws is not turned into a failure of the write: the store may
+ * have committed, and claiming otherwise would be the one guess this module exists to avoid. The
+ * `nothing was written` sentence is about the attempt only, so a save that failed to confirm sends
+ * the user to a form that re-reads, not to a retry that might overwrite a good key.
+ */
+export declare function writeKeyStatus(context: {
+    readonly credentials?: CredentialSeam | undefined;
+}, key: string, ref?: string): Promise<KeyWriteOutcome>;
+/**
+ * Forget the key and report what a read says afterwards.
+ *
+ * `unset` is idempotent in the provider (an absent key is not written and not announced), so this
+ * never has to ask whether anything was there -- and it never calls `set("")`, which the provider
+ * refuses with a message that would read like a bug in this plugin.
+ */
+export declare function clearKeyStatus(context: {
+    readonly credentials?: CredentialSeam | undefined;
+}, ref?: string): Promise<KeyWriteOutcome>;
 //# sourceMappingURL=credentials.d.ts.map

@@ -55,7 +55,7 @@ export function apply(ctx, options = {}) {
     });
 }
 export { NOTHING_READ, channelSourceFrom } from './source.js';
-export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, readKeyStatus, watchKeyStatus } from './credentials.js';
+export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
 export { CHANNEL_KEY, buildPublishedView, openChannel, } from './channel.js';
 //# sourceMappingURL=index.js.map

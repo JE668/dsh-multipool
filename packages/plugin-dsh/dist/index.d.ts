@@ -46,7 +46,7 @@ export declare function apply(ctx: {
     inject?(names: string[], callback: (child: KeyContext) => void): () => void;
 }, options?: HostOptions): () => void;
 export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
-export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, readKeyStatus, watchKeyStatus, type KeyContext, type KeyStatus } from './credentials.js';
+export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyLayer, type KeyState, type KeyWrite } from './key-store.js';
 export { CHANNEL_KEY, buildPublishedView, openChannel, type Channel, type ChannelHandle, type ChannelSource, type ChannelTarget, type IconBudget, type OpenChannelOptions, type PublishedView, } from './channel.js';
 //# sourceMappingURL=index.d.ts.map

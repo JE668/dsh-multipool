@@ -22,7 +22,7 @@
  *    page's event table; once `apply` has published, there is a reader, and the seam's own
  *    `credentials/reference-updated` event is the cheapest honest way to know the document moved.
  */
-import { AMD_KEY_REFS, describeKey } from './key-store.js';
+import { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, saveAmdKey } from './key-store.js';
 /** The service name dsh-credentials registers. `credentials-local` is one implementation of it. */
 export const CREDENTIALS_SERVICE = 'credentials';
 /** The reference this plugin reads when it builds a request. 02 section 1.2 defines it. */
@@ -80,5 +80,48 @@ export function watchKeyStatus(context, onRead, ref = AMD_KEY_REF) {
         if (typeof forget === 'function')
             forget();
     };
+}
+/**
+ * The write path, called by a form and by nothing else.
+ *
+ * Two deliberate choices. A refusal never reaches the seam -- key-store.ts throws before writing and
+ * says why in docs/02's words -- so `key` here is still the scrubber's job and not a new validation
+ * layer's. And a confirm read that throws is not turned into a failure of the write: the store may
+ * have committed, and claiming otherwise would be the one guess this module exists to avoid. The
+ * `nothing was written` sentence is about the attempt only, so a save that failed to confirm sends
+ * the user to a form that re-reads, not to a retry that might overwrite a good key.
+ */
+export async function writeKeyStatus(context, key, ref = AMD_KEY_REF) {
+    const seam = context.credentials;
+    try {
+        const saved = await saveAmdKey(seam, { ref, value: key });
+        // The rejection came from key-store, so a seam was there to be handed it; the state is still
+        // the read, which is what a form paints after refusing (usually absent, and not this guess).
+        if (!saved.ok)
+            return { status: await readKeyStatus(context, ref), message: saved.rejection.message };
+    }
+    catch (error) {
+        // The store owns its own rules (an empty value, a disposed provider) and states them in its
+        // own words. Those words are about the field, but they are still text on its way to a log.
+        return { status: await readKeyStatus(context, ref), message: describeFailure(error) };
+    }
+    return { status: await readKeyStatus(context, ref), message: null };
+}
+/**
+ * Forget the key and report what a read says afterwards.
+ *
+ * `unset` is idempotent in the provider (an absent key is not written and not announced), so this
+ * never has to ask whether anything was there -- and it never calls `set("")`, which the provider
+ * refuses with a message that would read like a bug in this plugin.
+ */
+export async function clearKeyStatus(context, ref = AMD_KEY_REF) {
+    const seam = context.credentials;
+    try {
+        await forgetAmdKey(seam, ref);
+    }
+    catch (error) {
+        return { status: await readKeyStatus(context, ref), message: describeFailure(error) };
+    }
+    return { status: await readKeyStatus(context, ref), message: null };
 }
 //# sourceMappingURL=credentials.js.map
