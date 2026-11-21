@@ -44,12 +44,15 @@
 |---|---|---|---|
 | 分类 | `ip_rate_limit_exceeded` 归为 `rpm_ip` | 已做 | `packages/core/src/amd-error.ts:192`；A-04 已测 |
 | 映射 | 把 `rpm_ip` 写进**这一个**账号的 `cooldownReason`，长度就是上游的 `Retry-After` | 已开一层 | `packages/core/src/cooldown.ts`；`packages/core/test/amd-cooldown.test.ts` 5 例 |
-| 接线 | 调度器在拿到 verdict 后调 `accountAfterVerdict` | **未做** | 全仓只有定义与测试，无调用方 |
+| 接线（代理层） | `handleProxyRequest` 分类完一个响应，把类型交给 `deps.note(accountAlias, rateClass)` | 已做，见 `packages/core/src/proxy.ts`；`packages/core/test/amd-proxy-note.test.ts` 4 例（反向验证：去掉 note 只红 1 条，把 rpm_ip 报成 rpm_key 红 2 条） |
+| 接线（持有者） | 谁持有 `Account[]`，谁就调 `accountAfterVerdict` 实施转变 | **未做** | `proxy` 不持有账号池，它只通知；目前全仓无人实现 `note` |
 | 广播 | 同出口 IP 的其他账号一起冷却 | **不做** | `04fd646` 的收窄理由 |
 
-所以 `rpm_ip` 仍只是一个**名字**：给单个账号的冷却原因贴的标签。现在多了一行代码会把它贴上去，
-但**这一行没有人调**——调度器仍在手写 fixture，`packages/core/test/amd-snapshot.test.ts` 里那个
-`cooldownReason: 'rpm_key'` 是全仓唯一一处被真正赋值的地方。“有了映射层”不等于“链路成立”，两者差的是一次接线动作。
+所以 `rpm_ip` 仍只是一个**名字**：给单个账号的冷却原因贴的标签。现在两行代码会把它带到应用层：
+`proxy.ts` 在每个响应上算它并通知持有者，`cooldown.ts` 把它写成账号的状态。
+**但两者之间还缺一个实现 `note` 的持有者**——因此 `accountAfterVerdict` 在真实路径上仍无调用方；
+`packages/core/test/amd-snapshot.test.ts` 里那个手写的 `cooldownReason: 'rpm_key'` 依然是库里唯一一处被赋值的地方。
+两半都写好了、只是没有人把它们接起来，与“两半都没写”在测试里是一回事——这是这一段最容易下滑的地方。
 
 同时暴露一处归属缺失：`docs/06-TASKS.md` 把 A-07 挂在 `[T-1-b/T-1-e]` 下，但 T-1-b 只要求
 「分类器把 code 归到 rpm_ip」（做了），T-1-e 没提跨账号熔断。**没有任何任务说自己要做 A-07 的后半句**。

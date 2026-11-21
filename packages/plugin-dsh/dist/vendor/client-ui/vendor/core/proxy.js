@@ -14,6 +14,7 @@
 import { headerOf, parseAmdError, retryAfterMsOf } from './amd-error.js';
 import { AMD_RPM_ACCOUNT, AMD_RPM_KEY, AMD_WINDOW_MS } from './limits.js';
 import { maskKey } from './secret.js';
+import { classifyAmdRateClass } from './amd-error.js';
 /** Which AMD paths the proxy exposes, and how it forwards them. */
 export const PROXY_ROUTES = [
     '/v1/chat/completions',
@@ -153,10 +154,24 @@ export async function handleProxyRequest(deps, request) {
             headers: forwarded,
             body: request.body,
         });
+        const body = await res.text();
+        // One classification per response, and it happens before the answer goes out: a 429
+        // whose class is already known is a cool already decided, not a promise about the next
+        // attempt. Successful responses are classified too, because the daily counters travel
+        // on them (02 section 1.3) and a caller reading only failures would never see the quota
+        // close.
+        //
+        // The proxy does not touch the account itself. deps.note is how the caller, which owns
+        // the pool, learns the verdict; without it this stays forgiving and does nothing.
+        if (deps.note !== undefined) {
+            const rateClass = classifyAmdRateClass({ status: res.status, headers: res.headers, body }, parseAmdError(body), retryAfterMsOf({ status: res.status, headers: res.headers, body }, deps.nowMs === undefined ? 0 : deps.nowMs()));
+            if (rateClass !== null)
+                deps.note(lease.key.accountAlias, rateClass);
+        }
         return {
             status: res.status,
             headers: renameRateHeaders(res.headers),
-            body: await res.text(),
+            body,
         };
     }
     finally {

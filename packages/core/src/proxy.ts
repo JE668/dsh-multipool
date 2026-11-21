@@ -17,6 +17,8 @@ import type { RateKind, Sourced } from './contract.js'
 import { headerOf, parseAmdError, retryAfterMsOf } from './amd-error.js'
 import { AMD_RPM_ACCOUNT, AMD_RPM_KEY, AMD_WINDOW_MS } from './limits.js'
 import { maskKey } from './secret.js'
+import { classifyAmdRateClass } from './amd-error.js'
+import type { RateClass } from './contract.js'
 
 /** Which AMD paths the proxy exposes, and how it forwards them. */
 export const PROXY_ROUTES = [
@@ -170,6 +172,18 @@ export interface ProxyDeps {
   readonly forward: Forward
   /** Upstream origin, e.g. https://developer.amd.com.cn/radeon . */
   readonly baseUrl: string
+  /**
+   * Where a classified response goes (04 section 9, S-06').
+   *
+   * Optional because the proxy alone knows nothing about an account pool: a caller that
+   * has no pool to cool simply does not pass it. When it is passed, the proxy classifies the
+   * response -- successful ones too, since the daily counters ride on them -- and notes the
+   * outcome against the account whose key was leased. The proxy does not keep the result:
+   * the caller owns the pool, so the caller owns the transition.
+   */
+  readonly note?: (accountAlias: string, rateClass: RateClass) => void
+  /** The clock the classification reads. Same one the pool was given, when there is a pool. */
+  readonly nowMs?: () => number
 }
 
 /**
@@ -202,10 +216,27 @@ export async function handleProxyRequest(deps: ProxyDeps, request: ProxyRequest)
       headers: forwarded,
       body: request.body,
     })
+    const body = await res.text()
+    // One classification per response, and it happens before the answer goes out: a 429
+    // whose class is already known is a cool already decided, not a promise about the next
+    // attempt. Successful responses are classified too, because the daily counters travel
+    // on them (02 section 1.3) and a caller reading only failures would never see the quota
+    // close.
+    //
+    // The proxy does not touch the account itself. deps.note is how the caller, which owns
+    // the pool, learns the verdict; without it this stays forgiving and does nothing.
+    if (deps.note !== undefined) {
+      const rateClass = classifyAmdRateClass(
+        { status: res.status, headers: res.headers, body },
+        parseAmdError(body),
+        retryAfterMsOf({ status: res.status, headers: res.headers, body }, deps.nowMs === undefined ? 0 : deps.nowMs()),
+      )
+      if (rateClass !== null) deps.note(lease.key.accountAlias, rateClass)
+    }
     return {
       status: res.status,
       headers: renameRateHeaders(res.headers),
-      body: await res.text(),
+      body,
     }
   } finally {
     lease.release()

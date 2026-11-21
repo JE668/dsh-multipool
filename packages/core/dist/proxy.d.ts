@@ -12,6 +12,7 @@
  *    mistake our admission numbers for the upstream's.
  */
 import type { Clock } from './clock.js';
+import type { RateClass } from './contract.js';
 /** Which AMD paths the proxy exposes, and how it forwards them. */
 export declare const PROXY_ROUTES: readonly ['/v1/chat/completions', '/v1/audio/speech', '/v1/systemone', '/v1/messages', '/v1/messages/count_tokens', '/v1/models'];
 export type ProxyRoute = (typeof PROXY_ROUTES)[number];
@@ -88,6 +89,18 @@ export interface ProxyDeps {
     readonly forward: Forward;
     /** Upstream origin, e.g. https://developer.amd.com.cn/radeon . */
     readonly baseUrl: string;
+    /**
+     * Where a classified response goes (04 section 9, S-06').
+     *
+     * Optional because the proxy alone knows nothing about an account pool: a caller that
+     * has no pool to cool simply does not pass it. When it is passed, the proxy classifies the
+     * response -- successful ones too, since the daily counters ride on them -- and notes the
+     * outcome against the account whose key was leased. The proxy does not keep the result:
+     * the caller owns the pool, so the caller owns the transition.
+     */
+    readonly note?: (accountAlias: string, rateClass: RateClass) => void;
+    /** The clock the classification reads. Same one the pool was given, when there is a pool. */
+    readonly nowMs?: () => number;
 }
 /**
  * One request in, one response out. The ordering matters and is the ticket:
