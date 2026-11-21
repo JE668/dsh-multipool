@@ -44,6 +44,10 @@
 - **DoD**：单测 fixture 覆盖：平台 RPM、平台并发（5 种 code）、网关 RPM、网关日额度、Anthropic 壳、HTML body、空 body、502、503 `Model gateway is busy`。
 - **验收**：A-01 ~ A-08
 
+  A-07 已在 `04fd646` 收窄：不做出口 IP 维度，只给撞上的那一个账号标 `rpm_ip`。
+  分类与映射（`packages/core/src/cooldown.ts`，`987666c`）已开一层；
+  调度器接线在 `987666c` 时**仍未做**，归属 T-2-c（层里需要 verdict，而 `scheduler` 无此入参）。
+
 ### T-1-c 模型目录（AMD）`dep: T-1-a`
 - `fetchModels()`：GET `/v1/models`，**计入 RPM 但可绕并发**（02 §1.5）。
 - 解析：`{data:[...]}` 无 `object`；`context_length` / `pricing`（字符串）/ `free` / `stability` / `supported_parameters` / `architecture` / `providers[]`。
@@ -133,8 +137,6 @@
      `typeof ch.command === 'function'`；这不是额外的负担，本来就该防旧 Host。
   3. **`KeyStatus` 不出界**：它的 `seam` 是四个方法的活动对象。`CommandOutcome.status` 改成扁平的
      `KeyReading { present, layer? }`，`outcomeOf` 里显式丢弃 seam。**没有任何可调用对象跨进程**。
-- `HostOptions.acceptsWrites` 默认 `false`，且现在**故意**保持 `false`：设置页的保存按钮还不存在，
-  提前开等于对外承诺一条必然返回 `no credential service` 的写入路径。随 T-2-f 一起开。
 
 ### T-2-f 设置页 AMD 组（写入口）`dep: T-2-e`
 - 独立设置页 `dsh-multipool-amd`（ADR-11），**不复用** `settings.plugin.item`（DSH 0.2.2-rc.3 没有）。
@@ -144,6 +146,8 @@
 - 红字拒绝（`validateAmdKey` 写盘前就拒，docs/02 §1.9）：`sk-开头的非 Token Factory 键`、Jupyter 实例域名。
 - 并发 / RPM 文案必须带 §号引用 docs/02 §1.1、§1.4；本地估算带 `L` 徽标、不与上游上限相减（docs/04 §9.2）。
 - 同一提交里把 `acceptsWrites` 置 `true`：写入口存在了，它才不是一条空承诺。
+- `HostOptions.acceptsWrites` 默认 `false`，且现在**故意**保持 `false`：设置页的保存按钮还不存在，
+  提前开等于对外承诺一条必然返回 `no credential service` 的写入路径。
 - **验收**：C-01 ~ C-03、U-04
 
 ---
