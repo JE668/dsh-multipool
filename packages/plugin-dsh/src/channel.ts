@@ -328,6 +328,32 @@ export interface BridgeTarget {
 }
 
 /**
+ * The dispatchEvent is specified to refuse anything that is not an Event, which a browser enforces
+ * with "parameter 1 is not of type 'Event'". A plain object literal therefore only ever works where
+ * the callback never reached a real platform -- the same shape as the two failures in docs/09
+ * section 6.1.1, green in test and silent in the app. So the answer is wrapped in whichever event
+ * constructor the running platform actually has: a browser has CustomEvent (detail is a real
+ * member), Node has Event (detail becomes an own property, which is all readBridgeRequest reads).
+ *
+ * A platform with neither cannot dispatch at all, and the caller finds that out at once.
+ */
+type EventCtor = new (type: string, init?: { readonly detail?: unknown }) => { readonly type: string; readonly detail?: unknown }
+
+function eventCtor(): EventCtor | undefined {
+  const global = globalThis as {
+    readonly CustomEvent?: EventCtor
+    readonly Event?: EventCtor
+  }
+  return global.CustomEvent ?? global.Event ?? undefined
+}
+
+function replyOn(where: BridgeTarget, wire: BridgeReply): void {
+  const Ctor = eventCtor()
+  if (Ctor === undefined) return
+  where.dispatchEvent(new Ctor(BRIDGE_REPLY, { detail: wire }))
+}
+
+/**
  * The endpoint table: one JSON payload per endpoint name, one JSON answer.
  *
  * `payload` arrives already parsed out of the event. Both endpoints answer in the envelope the
@@ -421,21 +447,18 @@ export function bridgeOf(
         const wire: BridgeReply = reply.ok
           ? { callId: request.callId, ok: true, value: reply.value }
           : { callId: request.callId, ok: false, error: reply.error }
-        where.dispatchEvent({ type: BRIDGE_REPLY, detail: wire })
+        replyOn(where, wire)
       },
       (thrown: unknown) => {
         // An endpoint that threw still owes the caller an answer, or the page waits forever for a
         // callId that will never come back. The message is the throw's own, not a rewrite of it.
-        where.dispatchEvent({
-          type: BRIDGE_REPLY,
-          detail: {
-            callId: request.callId,
-            ok: false,
-            error: {
-              code: 'multipool/endpoint-threw',
-              message: thrown instanceof Error ? thrown.message : String(thrown),
-            },
-          } satisfies BridgeReply,
+        replyOn(where, {
+          callId: request.callId,
+          ok: false,
+          error: {
+            code: 'multipool/endpoint-threw',
+            message: thrown instanceof Error ? thrown.message : String(thrown),
+          },
         })
       },
     )

@@ -161,6 +161,20 @@ window.__ModuleLoader__.load({
       return window
     }
 
+    /**
+     * The question, as the bus wants it: a real Event, not an object shaped like one.
+     *
+     * dispatchEvent is specified to refuse anything that is not an Event, and a browser enforces
+     * it -- our window stub did not, so the bridge looked wired while every single call refused on
+     * arrival with "parameter 1 is not of type 'Event'". CustomEvent is where `detail` lives at all;
+     * Event has no such member. The detail is a fresh object so a listener cannot rewrite the ask.
+     */
+    function askOf(callId, endpoint, payload) {
+      return new CustomEvent(BRIDGE_EVENT, {
+        detail: { callId: callId, endpoint: endpoint, payload: payload },
+      })
+    }
+
     var callCount = 0
 
     /**
@@ -201,10 +215,7 @@ window.__ModuleLoader__.load({
           fail(new Error(NO_WRITES))
         }, CALL_TIMEOUT_MS)
         bridge.addEventListener(BRIDGE_REPLY, answer)
-        bridge.dispatchEvent({
-          type: BRIDGE_EVENT,
-          detail: { callId: callId, endpoint: endpoint, payload: payload },
-        })
+        bridge.dispatchEvent(askOf(callId, endpoint, payload))
       })
     }
 

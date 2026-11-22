@@ -163,6 +163,16 @@ export function openChannel(options) {
 const BRIDGE_CALL = 'callId';
 const BRIDGE_ENDPOINT = 'endpoint';
 const BRIDGE_PAYLOAD = 'payload';
+function eventCtor() {
+    const global = globalThis;
+    return global.CustomEvent ?? global.Event ?? undefined;
+}
+function replyOn(where, wire) {
+    const Ctor = eventCtor();
+    if (Ctor === undefined)
+        return;
+    where.dispatchEvent(new Ctor(BRIDGE_REPLY, { detail: wire }));
+}
 /**
  * The endpoint table: one JSON payload per endpoint name, one JSON answer.
  *
@@ -243,19 +253,16 @@ export function bridgeOf(handle, target = undefined) {
             const wire = reply.ok
                 ? { callId: request.callId, ok: true, value: reply.value }
                 : { callId: request.callId, ok: false, error: reply.error };
-            where.dispatchEvent({ type: BRIDGE_REPLY, detail: wire });
+            replyOn(where, wire);
         }, (thrown) => {
             // An endpoint that threw still owes the caller an answer, or the page waits forever for a
             // callId that will never come back. The message is the throw's own, not a rewrite of it.
-            where.dispatchEvent({
-                type: BRIDGE_REPLY,
-                detail: {
-                    callId: request.callId,
-                    ok: false,
-                    error: {
-                        code: 'multipool/endpoint-threw',
-                        message: thrown instanceof Error ? thrown.message : String(thrown),
-                    },
+            replyOn(where, {
+                callId: request.callId,
+                ok: false,
+                error: {
+                    code: 'multipool/endpoint-threw',
+                    message: thrown instanceof Error ? thrown.message : String(thrown),
                 },
             });
         });

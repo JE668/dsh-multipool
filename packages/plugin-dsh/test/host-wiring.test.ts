@@ -49,6 +49,13 @@ class FakeWindow implements BridgeTarget {
   }
 
   dispatchEvent(event: { readonly type: string; readonly detail?: unknown }): void {
+    // What a browser does to a plain object, and the reason replyOn exists: dispatchEvent is
+    // specified to take an Event and nothing else. Throwing here instead of accepting it means
+    // this stub cannot bless the mistake the real renderer refused ("parameter 1 is not of
+    // type 'Event'"), the way a permissive fake blessed the two in docs/09 section 6.1.1.
+    if (!(event instanceof Event)) {
+      throw new TypeError('dispatchEvent: parameter 1 is not of type Event')
+    }
     this.delivered.push(event)
   }
 

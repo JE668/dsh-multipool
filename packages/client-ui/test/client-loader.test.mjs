@@ -179,14 +179,16 @@ test('asks the host on its two events, and sends the request as given', async ()
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
   // The two event names are the whole handshake between the halves, so they are asserted here and
   // not only over in plugin-dsh: this is the one file where both halves sit side by side.
-  assert.deepEqual(page.asked, [{
-    type: 'dsh-multipool:bridge',
-    detail: {
-      callId: 'multipool-1',
-      endpoint: 'command',
-      payload: { request: { name: 'save', key: 'rc-abc' } },
-    },
-  }])
+  // A real CustomEvent, not a literal: dispatchEvent refuses anything else, and this stub is a
+  // fake window, so nothing here would have enforced that on our behalf.
+  assert.equal(page.asked.length, 1)
+  assert.ok(page.asked[0] instanceof CustomEvent)
+  assert.equal(page.asked[0].type, 'dsh-multipool:bridge')
+  assert.deepEqual(page.asked[0].detail, {
+    callId: 'multipool-1',
+    endpoint: 'command',
+    payload: { request: { name: 'save', key: 'rc-abc' } },
+  })
   assert.deepEqual(outcome, { ok: true, message: null })
 })
 
