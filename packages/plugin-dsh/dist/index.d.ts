@@ -29,10 +29,11 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
+import { type Account } from '@dsh-multipool/core';
 import { type RouteServer } from './channel.js';
-import { type KeyStatus } from './credentials.js';
-import type { CredentialSeam } from './key-store.js';
-import { channelSourceFrom } from './source.js';
+import { type KeyContext, type KeyStatus } from './credentials.js';
+import type { CredentialSeam, KeyState } from './key-store.js';
+import { channelSourceFrom, type SourceFacts } from './source.js';
 export declare const VERSION = "0.0.2-rc.4";
 /** The icon prints this until a task computes the real account budget (04 section 2.2). */
 export declare const NO_BUDGET_SOURCES: readonly string[];
@@ -80,6 +81,38 @@ interface InjectedServices {
     readonly credentials?: CredentialSeam;
     readonly webServer?: RouteServer;
 }
+/**
+ * How far the pool has been read, in the source's own words.
+ *
+ * `SourceFacts` keeps each member optional, and that is enough for "one provider has no reading".
+ * It is not enough for "nobody has read the pool yet" once `accounts ?? []` has turned the absence
+ * into a list: from then on every count is a confident zero. So the third answer travels beside the
+ * list instead of being inferred from it, and the badge prints a dash for it.
+ */
+export type MutableFacts = {
+    -readonly [K in keyof SourceFacts]: SourceFacts[K];
+} & {
+    reading?: 'unread' | 'read' | 'empty';
+};
+/**
+ * The one account a single stored key amounts to.
+ *
+ * An empty list when the seam said there is no key: that is a reading too, and the icon draws 0/0
+ * for it on purpose. `undefined` only when the state is not an answer about the pool at all --
+ * `refused` and `unavailable` mean the question did not get through, and reporting "empty" on the
+ * pool's behalf would be exactly the lie U-06 names.
+ */
+export declare function accountFrom(state: KeyState): readonly Account[] | undefined;
+/**
+ * Read the key now, keep reading it when the seam says the reference moved, and hand back one disposer.
+ *
+ * The disposer covers both halves, so a disabled plugin leaves nothing behind: no listener on the
+ * seam's event, and no promise still writing into the facts object afterwards.
+ *
+ * The first read is not cached. key-store.ts resolves again on each operation, and a cached answer
+ * here would freeze "the store said no" into the icon's first paint forever.
+ */
+export declare function reportKeyInto(context: KeyContext, facts: MutableFacts, onRead?: (status: KeyStatus) => void): () => void;
 /** The channel's lifetime is the plugin's lifetime. */
 export declare function apply(ctx: {
     effect(callback: () => () => void): () => void;

@@ -129,6 +129,7 @@ window.__ModuleLoader__.load({
         budget: { admitRpm: 0, sources: [] },
         pointsProviderId: null,
         attached: false,
+        reading: 'unread',
       })
     }
     // The one command the page sends, and what it hands back: a refusal from the host (which
@@ -297,9 +298,11 @@ window.__ModuleLoader__.load({
     /** The view the icon and the panel both paint, asked for once per render. */
     function viewOf() {
       return ask(ENDPOINT_SNAPSHOT, {}).then(
-        function (view) {
-          if (view === undefined || view === null) return emptyView()
-          return view
+        function (answer) {
+          // { view, reading }: the reading travels beside the numbers, because a 0/0 the host
+          // never counted and a 0/0 it counted are the same five characters on screen.
+          if (answer === undefined || answer === null || answer.view === undefined) return emptyView()
+          return iconViewOf({ snapshot: answer.view, attached: true, reading: answer.reading })
         },
         function () {
           // No host, no answer, no story to tell: the icon's own empty pool already says "nothing

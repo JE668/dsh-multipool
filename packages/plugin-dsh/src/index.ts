@@ -30,7 +30,7 @@
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
 
-import { createSystemClock } from '@dsh-multipool/core'
+import { createSystemClock, type Account } from '@dsh-multipool/core'
 import {
   AMD_KEY_REF_NAME,
   openChannel,
@@ -45,6 +45,7 @@ import {
 } from './channel.js'
 import {
   CREDENTIALS_SERVICE,
+  readKeyStatus,
   clearKeyStatus,
   watchKeyStatus,
   writeKeyStatus,
@@ -52,8 +53,8 @@ import {
   type KeyStatus,
   type KeyWriteOutcome,
 } from './credentials.js'
-import type { CredentialSeam } from './key-store.js'
-import { NOTHING_READ, channelSourceFrom } from './source.js'
+import type { CredentialSeam, KeyState } from './key-store.js'
+import { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js'
 
 export const VERSION = '0.0.2-rc.4'
 
@@ -166,6 +167,75 @@ function injectOf(
   }
 }
 
+/**
+ * How far the pool has been read, in the source's own words.
+ *
+ * `SourceFacts` keeps each member optional, and that is enough for "one provider has no reading".
+ * It is not enough for "nobody has read the pool yet" once `accounts ?? []` has turned the absence
+ * into a list: from then on every count is a confident zero. So the third answer travels beside the
+ * list instead of being inferred from it, and the badge prints a dash for it.
+ */
+export type MutableFacts = { -readonly [K in keyof SourceFacts]: SourceFacts[K] } & {
+  reading?: 'unread' | 'read' | 'empty'
+}
+
+/**
+ * The one account a single stored key amounts to.
+ *
+ * An empty list when the seam said there is no key: that is a reading too, and the icon draws 0/0
+ * for it on purpose. `undefined` only when the state is not an answer about the pool at all --
+ * `refused` and `unavailable` mean the question did not get through, and reporting "empty" on the
+ * pool's behalf would be exactly the lie U-06 names.
+ */
+export function accountFrom(state: KeyState): readonly Account[] | undefined {
+  if (state.kind === 'configured') {
+    // Only the members an Account can carry without inventing any. No keyIdMasked: describe() never
+    // returns a preview for env layers, and inventing one is the lie key-store.ts rule 3 prevents.
+    return [
+      {
+        providerId: 'amd',
+        accountAlias: AMD_KEY_REF_NAME,
+        keyIdMasked: '',
+        enabled: true,
+        // Empty, not filled: nothing in this file has read the account's limits, and a number here
+        // would be the plugin's own guess wearing an Account's clothes (docs/03).
+        limits: {},
+        status: 'available',
+      },
+    ]
+  }
+  if (state.kind === 'absent') return []
+  return undefined
+}
+
+/**
+ * Read the key now, keep reading it when the seam says the reference moved, and hand back one disposer.
+ *
+ * The disposer covers both halves, so a disabled plugin leaves nothing behind: no listener on the
+ * seam's event, and no promise still writing into the facts object afterwards.
+ *
+ * The first read is not cached. key-store.ts resolves again on each operation, and a cached answer
+ * here would freeze "the store said no" into the icon's first paint forever.
+ */
+export function reportKeyInto(
+  context: KeyContext,
+  facts: MutableFacts,
+  onRead?: (status: KeyStatus) => void,
+): () => void {
+  const sink = onRead ?? ((): void => undefined)
+  const apply = (status: KeyStatus): void => {
+    if (status.kind !== 'read') return
+    const accounts = accountFrom(status.state)
+    if (accounts === undefined) return
+    facts.accounts = accounts
+    sink(status)
+  }
+  // watchKeyStatus() already reads once on its way in, so there is no separate first read here:
+  // two would mean the seam is asked twice for one icon paint, and the second answer would be the
+  // one that lands.
+  return watchKeyStatus(context, apply)
+}
+
 /** The channel's lifetime is the plugin's lifetime. */
 export function apply(
   ctx: {
@@ -176,17 +246,15 @@ export function apply(
 ): () => void {
   const nowMs = options.nowMs ?? (() => createSystemClock().now())
   return ctx.effect(() => {
-    const source: ChannelSource = channelSourceFrom(options.facts ?? NOTHING_READ, nowMs)
+    // The one object the seam writes into. It starts as NOTHING_READ -- every member absent, none
+    // zero -- and only a read that came back may change it, because `reading()` is derived from
+    // `accounts` being undefined here and nowhere else.
+    const facts: MutableFacts = { ...(options.facts ?? NOTHING_READ) }
+    const source: ChannelSource = channelSourceFrom(facts, nowMs)
     const budget: IconBudget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES }
     const channel = openChannel({ source, budget })
     const drops: Array<() => void> = []
-    // The route comes first because it is the only thing that makes the icon reachable at all: an
-    // opened channel nobody can ask is a handle dropped on the floor.
-    //
-    // The web server is the one thing the page and this process both already have -- the page reaches
-    // it through dsh-app://app, this process serves it -- so it is asked for, and an install without
-    // one gets the dashed icon rather than a throw. The two designs before this one assumed something
-    // shared and had to guess; this one asks.
+
     const server = options.server
     if (server === undefined) {
       drops.push(injectOf(ctx, [WEB_SERVER_SERVICE], child => {
@@ -197,20 +265,23 @@ export function apply(
     } else {
       drops.push(serveOn(server, channel))
     }
-    // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
-    // the page's listener table, which is what the comment above "no inject" promises in practice.
+
+    // Asked for unconditionally, which is the point of T-2-b's last leg. This injection used to be
+    // armed only when a reader or a writer had been handed in, and an install the user merely enabled
+    // hands in neither -- so the seam was never resolved, the facts never said who was there, and the
+    // icon painted 0/0: a confident number about a pool nobody had looked .A reason to
+    // paint is a reason to read, and the icon always has one.
     const onKeyStatus = options.onKeyStatus
-    // Neither a reader nor a writer means no listener: the injection below is the one thing that would
-    // put this plugin in the page's event table with nothing to do there.
-    if (onKeyStatus !== undefined || options.acceptsWrites === true) {
-      drops.push(injectOf(ctx, [CREDENTIALS_SERVICE], child => {
-        const seam = child.credentials
-        if (seam === undefined) return
-        if (onKeyStatus !== undefined) drops.push(watchKeyStatus(child, onKeyStatus))
-        // The write half is handed to the page, not used here. apply() still writes nothing itself.
-        if (options.acceptsWrites === true) channel.offer(writesFor(seam))
-      }))
-    }
+    drops.push(injectOf(ctx, [CREDENTIALS_SERVICE], child => {
+      const seam = child.credentials
+      // No seam at all stays indistinguishable from one that has not answered yet, and both read as
+      // 'unread' downstream. That is deliberate: "I could not tell" is not "there are none".
+      if (seam === undefined) return
+      drops.push(reportKeyInto(child, facts, onKeyStatus))
+      // The write half is handed to the page, not used here. apply() still writes nothing itself.
+      if (options.acceptsWrites === true) channel.offer(writesFor(seam))
+    }))
+
     return () => {
       for (const drop of drops.reverse()) drop()
       channel.close()

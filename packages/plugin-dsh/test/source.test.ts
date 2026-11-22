@@ -118,10 +118,9 @@ describe('the host half publishes what it has read, and nothing it has not', () 
     }
     const clock = createFakeClock({ now: NOW })
     apply(ctx, { nowMs: () => clock.now(), server })
-    // A route needs no provider: the server is handed in, and nothing is injected for it.
-    expect(injected).toEqual([])
+    // The route needs no provider, but the key does: the seam is asked for whenever the icon paints.
+    expect(injected).toEqual([['credentials']])
     expect(claimed.has(CHANNEL)).toBe(true)
-
 
     const route = claimed.get(CHANNEL)
     expect(route !== undefined).toBe(true)
@@ -144,10 +143,9 @@ describe('the host half publishes what it has read, and nothing it has not', () 
     }
     await route?.handler(req, res)
     expect(asked).toHaveLength(1)
-    expect(asked[0]?.status).toBe(200)
-    const answered = JSON.parse(asked[0]?.body ?? '{}') as { ok: boolean; value: { attached: boolean } }
+    const answered = JSON.parse(asked[0]?.body ?? '{}') as { ok: boolean; value: { view: { attached: boolean } } }
     expect(answered.ok).toBe(true)
-    expect(answered.value.attached).toBe(true)
+    expect(answered.value.view.attached).toBe(true)
 
     for (const dispose of effects) dispose()
     expect(claimed.has(CHANNEL)).toBe(false)

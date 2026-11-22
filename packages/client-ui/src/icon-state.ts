@@ -28,12 +28,43 @@ export const PROVIDER_SHORT_LABELS: Readonly<Record<ProviderId, string>> = {
   google: 'Google',
 }
 
-/** Marks a value the plugin has no upstream figure for fouled. An em dash, never a zero. */
+/** Marks a value the plugin has no upstream figure for. An em dash, never a zero. */
 export const NO_VALUE = '\u2014'
+
+/**
+ * How far the host half has read the pool, carried beside the counts (source.ts Reading).
+ *
+ * `empty` is a reading and `unread` is not. A host that asked and found no keys has an answer
+ * worth printing, and it is '0/0'. A host that has not answered yet has no answer, and 0/0 is
+ * the one glyph docs/05 section 2.3 keeps it from -- so it prints the dash pair and stays idle.
+ */
+export type Reading = 'unread' | 'read' | 'empty'
+
+/** Line two's reason when the host half never answered at all. */
+export function hostUnreachable(): string {
+  return 'host ' + '\u672a\u8fd0\u884c'
+}
+
+/** Line one's answer when the host answered but nobody has looked yet. */
+export function accountsUnread(): string {
+  return '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE
+}
+
+/** Line two's reason when the host is running but has not looked at the pool yet. */
+export function notReadYet(): string {
+  return '\u6ca1\u8bfb\u8fc7\u8d26\u53f7\u6c60'
+}
+
+/** Line two's count when no count was ever taken. */
+export function rpmUnread(): string {
+  return '\u5168\u5c40 RPM ' + NO_VALUE
+}
 
 export interface IconCounts {
   readonly available: number
   readonly total: number
+  /** How far the host got. Absent when nobody said, which is unread -- never zero. */
+  readonly reading?: Reading
 }
 
 export interface ProviderCountLine {
@@ -79,9 +110,17 @@ function lineOf(provider: ProviderSnapshot): ProviderCountLine {
  * "you have not set a key yet" the same picture, which is the one thing a status light must
  * never do.
  */
-export function iconLevelOf(overall: AccountTally, configured: boolean, attached?: boolean): IconLevel {
+export function iconLevelOf(
+  overall: AccountTally,
+  configured: boolean,
+  attached?: boolean,
+  reading?: Reading,
+): IconLevel {
   const heard = attached === undefined ? true : attached
-  if (!configured || overall.total === 0) return heard ? 'grey' : 'idle'
+  if (!heard) return 'idle'
+  // Nobody has looked: 'unread' is not an empty pool, and must not borrow its colour.
+  if (reading === 'unread') return 'idle'
+  if (!configured || overall.total === 0) return 'grey'
   if (overall.available === 0) return 'red'
   if (overall.available < overall.total) return 'yellow'
   return 'green'
@@ -99,8 +138,16 @@ export function badgeTextOf(counts: IconCounts): string {
  * mean it. A host that has not answered has made no claim at all, so it shows a pair of dashes
  * instead. The two cases must not share a glyph.
  */
-export function badgeFor(view: { readonly attached: boolean; readonly badge: string }): string {
-  return view.attached ? view.badge : NO_VALUE + '/' + NO_VALUE
+export function badgeFor(view: {
+  readonly attached: boolean
+  readonly badge: string
+  readonly reading?: Reading
+}): string {
+  if (!view.attached) return NO_VALUE + '/' + NO_VALUE
+  // A host that answered 'I have not looked' has a badge in the same sense that a
+  // switched-off drawer does: the digits exist, and none of them were asked for.
+  if (view.reading === 'unread') return NO_VALUE + '/' + NO_VALUE
+  return view.badge
 }
 
 /**
@@ -110,8 +157,8 @@ export function badgeFor(view: { readonly attached: boolean; readonly badge: str
  * would print -- it is unknown. So the em dash stands in for the count, and the reason for the
  * dash is spelled out where line two usually prints its formula.
  */
-export function rpmLineUnattached(): string {
-  return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08host \u672a\u8fd0\u884c\uff09'
+export function rpmLineUnattached(reason: string = hostUnreachable()): string {
+  return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08' + reason + '\uff09'
 }
 
 
@@ -187,6 +234,13 @@ export interface IconViewInput {
   readonly pointsProviderId: ProviderId | null
   /** When line three's numbers were fetched, if they are older than the snapshot itself. */
   readonly pointsFetchedAtLabel?: string | null
+  /**
+   * How far the host got: 'unread' when it never looked, 'empty' when it looked and found none.
+   *
+   * Absent is read as unread rather than as zero, because a caller that did not say is a caller
+   * whose pool was never counted, and 0/0 is a number.
+   */
+  readonly reading?: Reading
 }
 
 /** Everything the icon component needs, and nothing it would have to decide for itself. */
@@ -202,24 +256,30 @@ export interface IconView {
 export function iconViewOf(input: IconViewInput): IconView {
   const snapshot = input.snapshot
   const attached = input.attached === undefined ? true : input.attached
-  const counts = { available: snapshot.overall.available, total: snapshot.overall.total }
+  const reading: Reading = input.reading === undefined ? 'unread' : input.reading
+  const counts: IconCounts = {
+    available: snapshot.overall.available,
+    total: snapshot.overall.total,
+    reading,
+  }
   const pointsProvider = input.pointsProviderId === null
     ? undefined
     : snapshot.providers.find((p) => p.providerId === input.pointsProviderId)
   const points = pointsProvider === undefined
     ? '\u4eca\u65e5 pts ' + NO_VALUE
     : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
-  const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached)
+  const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached, reading)
+  const unread = reading === 'unread'
   const lines = {
-    accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
-    rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
-    points: attached ? points : '\u4eca\u65e5 pts ' + NO_VALUE,
+    accounts: !attached || unread ? accountsUnread() : accountsLine(snapshot),
+    rpm: attached && !unread ? rpmLine(input.budget) : rpmLineUnattached(unread ? notReadYet() : hostUnreachable()),
+    points: !attached || unread ? '\u4eca\u65e5 pts ' + NO_VALUE : points,
   }
   return {
     level,
     counts,
     attached,
-    badge: badgeFor({ attached, badge: badgeTextOf(counts) }),
+    badge: badgeFor({ attached, badge: badgeTextOf(counts), reading }),
     lines: {
       accounts: lines.accounts,
       rpm: lines.rpm,

@@ -86,8 +86,11 @@ export function buildPublishedView(source, budget, pointsProviderId) {
     // attached is true on purpose: the browser half only calls view() when it found this
     // channel, and this file exists only inside the host. The path that flips it back is
     // the browser's missing-channel branch, which never reaches us.
-    const view = iconViewOf({ snapshot, budget, pointsProviderId, attached: true });
-    return { snapshot, view, wire: serializeSnapshot(snapshot) };
+    const reading = source.reading();
+    const view = iconViewOf({ snapshot, budget, pointsProviderId, attached: true, reading });
+    // The list and the claim about it travel together. serializeSnapshot() cannot carry this -- it
+    // counts accounts, and a count of zero is the same number whether the pool was read or not.
+    return { snapshot, reading, view, wire: serializeSnapshot(snapshot) };
 }
 /** The name a command request carries. One field, because there is one question. */
 const COMMAND_NAME = 'name';
@@ -153,6 +156,9 @@ export function openChannel(options) {
         isPublished() {
             return last !== null;
         },
+        published() {
+            return last;
+        },
         close() {
             closed = true;
             last = null;
@@ -172,7 +178,8 @@ export function openChannel(options) {
 export function answerOf(handle) {
     return async (endpoint, payload) => {
         if (endpoint === ENDPOINT_SNAPSHOT) {
-            return { ok: true, value: handle.publish().view };
+            const built = handle.publish();
+            return { ok: true, value: { view: built.view, reading: built.reading } };
         }
         if (endpoint === ENDPOINT_COMMAND) {
             // The payload is { request } rather than the request itself: a command with no fields

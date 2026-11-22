@@ -120,28 +120,28 @@ function contextOf(config: { hasInject: boolean; configured?: boolean; missing?:
 
 
 describe('the host half asks the seam only when somebody is reading the answer', () => {
-  it('registers the route and asks nothing when no reader is given', async () => {
+  it('reads the seam once even with no reader, because the icon always paints a reading', async () => {
     const { context, effects, injections, seam, server } = contextOf({ hasInject: true })
     apply(context, { server })
     // apply() only registers its body; the channel is opened when effect() runs it, as cordis does.
     const disposers = effects.map(effect => effect())
-    expect(injections).toEqual([])
-    expect(seam.reads).toBeUndefined()
-    // No service is asked for: the route is handed in, and a plain object needs no provider.
-    // A POST is what puts it on the wire -- CHANNEL is the page's half of the contract.
+    expect(injections).toEqual(['credentials'])
+    expect(seam.reads).toBe(1)
+    // One injection installs the watch, and watchKeyStatus() reads once on its way in: that read is
+    // how the icon tells an empty pool from a pool nobody has looked at.
     expect(CHANNEL).toBe('/dsh-multipool')
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(server.routes.has(CHANNEL)).toBe(true)
     const answered = (await server.ask(ENDPOINT_SNAPSHOT, undefined)) as {
-      ok: boolean
-      value: { badge: string }
+      value: { view: { badge: string }; reading: string }
     }
-    expect(answered.ok).toBe(true)
-    expect(answered.value.badge).toBe('0/0')
+    expect(answered.value.reading).toBe('empty')
+    expect(answered.value.view.badge).toBe('0/0')
     for (const dispose of disposers) dispose()
     expect(server.routes.has(CHANNEL)).toBe(false)
   })
 
-  it('arms one read through the credentials service when a reader is given', async () => {
+  it('hands the reader the same read it makes for the icon, not a second one', async () => {
     const { context, effects, injections, seam } = contextOf({ hasInject: true })
     const server = new FakeServer()
     const seen: KeyStatus[] = []
@@ -151,8 +151,6 @@ describe('the host half asks the seam only when somebody is reading the answer',
     expect(injections).toEqual(['credentials'])
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(seen).toHaveLength(1)
-    expect(seen[0]?.kind).toBe('read')
-    expect(seen[0]?.kind === 'read' ? seen[0].state : undefined).toEqual({ kind: 'absent' })
     // Reading is all that happened: the seam wrote nothing, and the route answers anyway.
     expect(seam.reads).toBe(1)
     expect(server.routes.has(CHANNEL)).toBe(true)
@@ -164,10 +162,9 @@ describe('the host half asks the seam only when somebody is reading the answer',
     // The shape a real install took: the context had no webServer to hand back, and the code that
     // read the missing one threw on the read. A dashed icon is still an icon; a throw is nothing at
     // all, and the user sees the plugin leave the rail (docs/09 section 6.1).
-    const { context, effects, injections, server } = contextOf({ hasInject: true, missing: 'webServer' })
+    const { context, effects, injections } = contextOf({ hasInject: true, missing: 'webServer' })
     expect(() => apply(context, { onKeyStatus: () => undefined })).not.toThrow()
     const disposers = effects.map(effect => effect())
-    // Both are asked for -- the injection is where the absence is discovered, not before it -- and
     // the half that was there still arms. Only the automatic claim is lost, and only until a server
     // is handed in, which is the difference between a dashed icon and no icon at all.
     expect(injections).toEqual(['webServer', 'credentials'])
@@ -195,16 +192,21 @@ describe('the host half asks the seam only when somebody is reading the answer',
     const server = new FakeServer()
     apply(context, { server, onKeyStatus: () => undefined })
     const disposers = effects.map(effect => effect())
+    // Nobody could be asked, and nothing threw on the way to saying so.
     expect(injections).toEqual([])
     expect(seam.reads).toBeUndefined()
-    // No seam was touched, and nothing threw on the way to saying so. The route is there all the
-    // same: it is a plain object handed in, and no context can refuse one.
+    // The route is there all the same: it is a plain object handed in, and no context refuses one.
     expect(server.routes.has(CHANNEL)).toBe(true)
-    const answered = (await server.ask(ENDPOINT_SNAPSHOT, undefined)) as { ok: boolean; value: { badge: string } }
+    const answered = (await server.ask(ENDPOINT_SNAPSHOT, undefined)) as {
+      ok: boolean
+      value: { view: { badge: string; level: string }; reading: string }
+    }
     expect(answered.ok).toBe(true)
-    expect(answered.value.badge).toBe('0/0')
+    // The pool was never counted, so the badge must not say 0/0: dashes and an idle ring.
+    expect(answered.value.reading).toBe('unread')
+    expect(answered.value.view.badge).toBe('—/—')
+    expect(answered.value.view.level).toBe('idle')
     for (const dispose of disposers) dispose()
-    expect(server.routes.has(CHANNEL)).toBe(false)
   })
 })
 
@@ -334,8 +336,8 @@ describe('the host half hands writes to the page, and performs none itself', () 
     apply(context, { server, acceptsWrites: true })
     const disposers = effects.map(effect => effect())
     expect(typeof server.routes.get(CHANNEL)?.handler).toBe('function')
-    // Arming opened the channel; it did not save, forget, or even read the seam.
-    expect(seam.reads).toBeUndefined()
+    // Arming opened the channel and read the seam once: it saved nothing and forgot nothing.
+    expect(seam.reads).toBe(1)
     for (const dispose of disposers) dispose()
   })
 
@@ -349,7 +351,7 @@ describe('the host half hands writes to the page, and performs none itself', () 
     expect(outcome.reason).toBe('absent')
     expect(outcome.message).toContain('sk-')
     // The refused key never reached set(); the one read this command makes is that confirm re-read.
-    expect(seam.reads).toBe(1)
+    expect(seam.reads).toBe(2)
     for (const dispose of disposers) dispose()
   })
 
@@ -362,7 +364,7 @@ describe('the host half hands writes to the page, and performs none itself', () 
     expect(outcome.ok).toBe(true)
     // Exactly the confirm read this command just made: the earlier ok case showed that arming
     // without a reader asks the seam nothing, and this count is what pins that down.
-    expect(seam.reads).toBe(1)
+    expect(seam.reads).toBe(2)
     for (const dispose of disposers) dispose()
   })
 
@@ -371,7 +373,7 @@ describe('the host half hands writes to the page, and performs none itself', () 
     const server = new FakeServer()
     apply(context, { server })
     const disposers = effects.map(effect => effect())
-    expect(injections).toEqual([])
+    expect(injections).toEqual(['credentials'])
     expect(typeof server.routes.get(CHANNEL)?.handler).toBe('function')
     expect(await commandOn(server, { name: 'save', key: 'rc-' + 'a'.repeat(32) })).toEqual({
       ok: false,

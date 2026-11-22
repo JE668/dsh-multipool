@@ -57,6 +57,13 @@ import type { KeyLayer } from './key-store.js';
  */
 export declare const CHANNEL = "/dsh-multipool";
 /**
+ * How far `accounts()` has been read, in the only three words that are true.
+ *
+ * `empty` is a reading and `unread` is not: the first says the pool was asked and holds nothing, the
+ * second says nobody has asked. Only the first may print a number at all, and it prints zero.
+ */
+export type Reading = 'unread' | 'read' | 'empty';
+/**
  * The endpoint names the page may ask for, one path segment under CHANNEL.
  *
  * These have kept their spelling across four transports, so the two halves of this repo still speak
@@ -90,6 +97,15 @@ export interface ChannelSource {
     readonly queued: () => number;
     /** The one clock. This module never reads Date.now itself. */
     readonly nowMs: () => number;
+    /**
+     * Whether `accounts()` is a reading at all, or only the list this source happens to hold.
+     *
+     * The two are indistinguishable by shape: an unread pool and a pool that was read and found empty
+     * both answer `[]`, and the badge draws `0/0` for both. The first is not a claim the host may make
+     * (U-06), so the difference travels as a third word rather than as a convention every painter has
+     * to remember.
+     */
+    readonly reading: () => Reading;
 }
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
 export interface IconBudget {
@@ -145,6 +161,8 @@ export interface ChannelWrites {
 }
 export interface PublishedView {
     readonly snapshot: Snapshot;
+    /** How far the accounts were read: 'unread' is not the same claim as 'empty'. */
+    readonly reading: Reading;
     readonly view: IconView;
     /** The scrubbed JSON. Kept beside the view so a test can assert the wire carries no key. */
     readonly wire: string;
@@ -165,6 +183,13 @@ export interface OpenChannelOptions {
 export interface ChannelHandle {
     /** Rebuild from current state and remember it. Returns what the next view() will answer. */
     readonly publish: () => PublishedView;
+    /**
+     * The last published view, or null before the first publish.
+     *
+     * answerOf() asks through this so the page's snapshot request does not double as a command: a
+     * question must not refresh the state the rest of the file is answering from.
+     */
+    readonly published: () => PublishedView | null;
     readonly isPublished: () => boolean;
     readonly command: (request: unknown) => Promise<CommandOutcome>;
     /** Attach the write half once the credential seam resolves. */

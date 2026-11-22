@@ -15,8 +15,24 @@ export const PROVIDER_SHORT_LABELS = {
     agnes: 'Agnes',
     google: 'Google',
 };
-/** Marks a value the plugin has no upstream figure for fouled. An em dash, never a zero. */
+/** Marks a value the plugin has no upstream figure for. An em dash, never a zero. */
 export const NO_VALUE = '\u2014';
+/** Line two's reason when the host half never answered at all. */
+export function hostUnreachable() {
+    return 'host ' + '\u672a\u8fd0\u884c';
+}
+/** Line one's answer when the host answered but nobody has looked yet. */
+export function accountsUnread() {
+    return '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE;
+}
+/** Line two's reason when the host is running but has not looked at the pool yet. */
+export function notReadYet() {
+    return '\u6ca1\u8bfb\u8fc7\u8d26\u53f7\u6c60';
+}
+/** Line two's count when no count was ever taken. */
+export function rpmUnread() {
+    return '\u5168\u5c40 RPM ' + NO_VALUE;
+}
 function lineOf(provider) {
     return {
         providerId: provider.providerId,
@@ -42,10 +58,15 @@ function lineOf(provider) {
  * "you have not set a key yet" the same picture, which is the one thing a status light must
  * never do.
  */
-export function iconLevelOf(overall, configured, attached) {
+export function iconLevelOf(overall, configured, attached, reading) {
     const heard = attached === undefined ? true : attached;
+    if (!heard)
+        return 'idle';
+    // Nobody has looked: 'unread' is not an empty pool, and must not borrow its colour.
+    if (reading === 'unread')
+        return 'idle';
     if (!configured || overall.total === 0)
-        return heard ? 'grey' : 'idle';
+        return 'grey';
     if (overall.available === 0)
         return 'red';
     if (overall.available < overall.total)
@@ -64,7 +85,13 @@ export function badgeTextOf(counts) {
  * instead. The two cases must not share a glyph.
  */
 export function badgeFor(view) {
-    return view.attached ? view.badge : NO_VALUE + '/' + NO_VALUE;
+    if (!view.attached)
+        return NO_VALUE + '/' + NO_VALUE;
+    // A host that answered 'I have not looked' has a badge in the same sense that a
+    // switched-off drawer does: the digits exist, and none of them were asked for.
+    if (view.reading === 'unread')
+        return NO_VALUE + '/' + NO_VALUE;
+    return view.badge;
 }
 /**
  * Line two when there is no host to ask.
@@ -73,8 +100,8 @@ export function badgeFor(view) {
  * would print -- it is unknown. So the em dash stands in for the count, and the reason for the
  * dash is spelled out where line two usually prints its formula.
  */
-export function rpmLineUnattached() {
-    return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08host \u672a\u8fd0\u884c\uff09';
+export function rpmLineUnattached(reason = hostUnreachable()) {
+    return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08' + reason + '\uff09';
 }
 /**
  * Line one: accounts, split by provider.
@@ -127,24 +154,30 @@ export function pointsLine(provider, fetchedAtLabel) {
 export function iconViewOf(input) {
     const snapshot = input.snapshot;
     const attached = input.attached === undefined ? true : input.attached;
-    const counts = { available: snapshot.overall.available, total: snapshot.overall.total };
+    const reading = input.reading === undefined ? 'unread' : input.reading;
+    const counts = {
+        available: snapshot.overall.available,
+        total: snapshot.overall.total,
+        reading,
+    };
     const pointsProvider = input.pointsProviderId === null
         ? undefined
         : snapshot.providers.find((p) => p.providerId === input.pointsProviderId);
     const points = pointsProvider === undefined
         ? '\u4eca\u65e5 pts ' + NO_VALUE
         : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel);
-    const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached);
+    const level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached, reading);
+    const unread = reading === 'unread';
     const lines = {
-        accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
-        rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
-        points: attached ? points : '\u4eca\u65e5 pts ' + NO_VALUE,
+        accounts: !attached || unread ? accountsUnread() : accountsLine(snapshot),
+        rpm: attached && !unread ? rpmLine(input.budget) : rpmLineUnattached(unread ? notReadYet() : hostUnreachable()),
+        points: !attached || unread ? '\u4eca\u65e5 pts ' + NO_VALUE : points,
     };
     return {
         level,
         counts,
         attached,
-        badge: badgeFor({ attached, badge: badgeTextOf(counts) }),
+        badge: badgeFor({ attached, badge: badgeTextOf(counts), reading }),
         lines: {
             accounts: lines.accounts,
             rpm: lines.rpm,

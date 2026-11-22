@@ -34,6 +34,22 @@ export declare const NOTHING_READ: SourceFacts;
  * Absent facts collapse to the smallest honest answer rather than the friendliest one: no accounts
  * reads as an empty list, because the snapshot type has no slot for "unknown list" and a count of
  * items you have not looked for is not a count. No usage reading stays out of the map entirely.
+ *
+ * `reading` is the exception, and it is why the sentence above is only half true: `accounts ?? []`
+ * gives snapshot.ts a list it can count, and a count is a number, so an unread pool arrives at the
+ * badge as 0/0 -- the same glyph as a pool that was read and found empty. The third answer has to be
+ * carried alongside the list, not deduced from it.
  */
 export declare function channelSourceFrom(facts: SourceFacts, nowMs: () => number): ChannelSource;
+/**
+ * Whether the facts in hand came from a read, from a pool that was read and empty, or from neither.
+ *
+ * `unread` is the third answer, and it is the one this repo kept losing: accounts.ts and source.ts
+ * both turn "no one has looked" into an empty list, and an empty list is a perfectly good number --
+ * zero -- for everything downstream. U-06 forbids that zero, so the state has to travel as its own
+ * word the whole way to the badge, where it prints a dash instead of a digit.
+ */
+export type Reading = 'unread' | 'read' | 'empty';
+/** Unread when the list is absent; empty or read when it was handed over, judged by its size. */
+export declare function readingOf(facts: SourceFacts): Reading;
 //# sourceMappingURL=source.d.ts.map

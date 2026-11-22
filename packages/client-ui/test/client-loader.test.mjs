@@ -154,6 +154,7 @@ test('still prints 0/0 once the host answers with an empty pool', () => {
     snapshot: core.emptySnapshot(),
     budget: { admitRpm: 0, sources: [] },
     pointsProviderId: null,
+    reading: 'empty',
   })
   assert.equal(answered.attached, true)
   assert.equal(answered.badge, '0/0')

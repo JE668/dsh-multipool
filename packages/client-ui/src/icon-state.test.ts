@@ -149,7 +149,7 @@ describe('iconViewOf wires the three lines together', () => {
       [],
       { amd: usage({ dailyUsedPts: { value: 4.19, source: 'api' }, dailyLimitPts: { value: 189, source: 'api' } }) },
     )
-    const view = iconViewOf({ snapshot: s, budget: BUDGET, pointsProviderId: 'amd' })
+    const view = iconViewOf({ snapshot: s, budget: BUDGET, pointsProviderId: 'amd', reading: 'read' })
     expect(view.level).toBe('yellow')
     expect(view.badge).toBe('1/2')
     expect(view.lines.accounts).toContain('1/2')
@@ -158,14 +158,14 @@ describe('iconViewOf wires the three lines together', () => {
   })
 
   it('still renders a points line when no provider was chosen', () => {
-    const view = iconViewOf({ snapshot: snap([acct('amd', 'A', 'available')]), budget: BUDGET, pointsProviderId: null })
+    const view = iconViewOf({ snapshot: snap([acct('amd', 'A', 'available')]), budget: BUDGET, pointsProviderId: null, reading: 'read' })
     expect(view.lines.points).toContain(DASH)
   })
 })
 
 describe('attached: a host that never answered is not an empty pool', () => {
   const unattached = (s: Snapshot) =>
-    iconViewOf({ snapshot: s, budget: BUDGET, pointsProviderId: null, attached: false })
+    iconViewOf({ snapshot: s, budget: BUDGET, pointsProviderId: null, attached: false, reading: 'unread' })
 
   it('dashes the badge instead of claiming 0/0', () => {
     const view = unattached(snap([]))
@@ -178,7 +178,7 @@ describe('attached: a host that never answered is not an empty pool', () => {
     const view = unattached(snap([]))
     expect(view.lines.rpm).toContain(DASH)
     expect(view.lines.rpm).not.toContain("0")
-    expect(view.lines.rpm).toContain('host')
+    expect(view.lines.rpm).toContain('账号池')
   })
 
   it('says nothing about points either', () => {
@@ -188,7 +188,7 @@ describe('attached: a host that never answered is not an empty pool', () => {
   })
 
   it('keeps the ordinary 0/0 for a host that did answer with no keys', () => {
-    const view = iconViewOf({ snapshot: snap([]), budget: BUDGET, pointsProviderId: null })
+    const view = iconViewOf({ snapshot: snap([]), budget: BUDGET, pointsProviderId: null, reading: 'empty' })
     expect(view.attached).toBe(true)
     expect(view.badge).toBe('0/0')
   })

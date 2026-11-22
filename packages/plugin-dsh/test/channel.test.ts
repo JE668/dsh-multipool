@@ -45,10 +45,11 @@ function sourceOf(accounts: readonly Account[], events: readonly MetricsEvent[] 
     activeSessions: () => 2,
     queued: () => 0,
     nowMs: () => NOW,
+    reading: () => (accounts.length === 0 ? 'empty' : 'read'),
   }
 }
 
-const viewOf = (answer: unknown): IconView => (answer as { value: IconView }).value
+const viewOf = (answer: unknown): IconView => (answer as { value: { view: IconView } }).value.view
 
 describe('channel', () => {
   it('answers before the first publish, and builds on demand', async () => {

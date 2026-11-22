@@ -17,11 +17,29 @@ export type IconLevel = 'green' | 'yellow' | 'red' | 'grey' | 'idle';
 export declare const ICON_PROVIDER_ORDER: readonly ProviderId[];
 /** Display names for the tooltip. Kept short so three lines fit in a 56px rail. */
 export declare const PROVIDER_SHORT_LABELS: Readonly<Record<ProviderId, string>>;
-/** Marks a value the plugin has no upstream figure for fouled. An em dash, never a zero. */
+/** Marks a value the plugin has no upstream figure for. An em dash, never a zero. */
 export declare const NO_VALUE = "\u2014";
+/**
+ * How far the host half has read the pool, carried beside the counts (source.ts Reading).
+ *
+ * `empty` is a reading and `unread` is not. A host that asked and found no keys has an answer
+ * worth printing, and it is '0/0'. A host that has not answered yet has no answer, and 0/0 is
+ * the one glyph docs/05 section 2.3 keeps it from -- so it prints the dash pair and stays idle.
+ */
+export type Reading = 'unread' | 'read' | 'empty';
+/** Line two's reason when the host half never answered at all. */
+export declare function hostUnreachable(): string;
+/** Line one's answer when the host answered but nobody has looked yet. */
+export declare function accountsUnread(): string;
+/** Line two's reason when the host is running but has not looked at the pool yet. */
+export declare function notReadYet(): string;
+/** Line two's count when no count was ever taken. */
+export declare function rpmUnread(): string;
 export interface IconCounts {
     readonly available: number;
     readonly total: number;
+    /** How far the host got. Absent when nobody said, which is unread -- never zero. */
+    readonly reading?: Reading;
 }
 export interface ProviderCountLine {
     readonly providerId: ProviderId;
@@ -52,7 +70,7 @@ export interface ProviderCountLine {
  * "you have not set a key yet" the same picture, which is the one thing a status light must
  * never do.
  */
-export declare function iconLevelOf(overall: AccountTally, configured: boolean, attached?: boolean): IconLevel;
+export declare function iconLevelOf(overall: AccountTally, configured: boolean, attached?: boolean, reading?: Reading): IconLevel;
 /** The badge number: available accounts first, matching what the level means. */
 export declare function badgeTextOf(counts: IconCounts): string;
 /**
@@ -65,6 +83,7 @@ export declare function badgeTextOf(counts: IconCounts): string;
 export declare function badgeFor(view: {
     readonly attached: boolean;
     readonly badge: string;
+    readonly reading?: Reading;
 }): string;
 /**
  * Line two when there is no host to ask.
@@ -73,7 +92,7 @@ export declare function badgeFor(view: {
  * would print -- it is unknown. So the em dash stands in for the count, and the reason for the
  * dash is spelled out where line two usually prints its formula.
  */
-export declare function rpmLineUnattached(): string;
+export declare function rpmLineUnattached(reason?: string): string;
 /**
  * Line one: accounts, split by provider.
  *
@@ -126,6 +145,13 @@ export interface IconViewInput {
     readonly pointsProviderId: ProviderId | null;
     /** When line three's numbers were fetched, if they are older than the snapshot itself. */
     readonly pointsFetchedAtLabel?: string | null;
+    /**
+     * How far the host got: 'unread' when it never looked, 'empty' when it looked and found none.
+     *
+     * Absent is read as unread rather than as zero, because a caller that did not say is a caller
+     * whose pool was never counted, and 0/0 is a number.
+     */
+    readonly reading?: Reading;
 }
 /** Everything the icon component needs, and nothing it would have to decide for itself. */
 export interface IconView {
