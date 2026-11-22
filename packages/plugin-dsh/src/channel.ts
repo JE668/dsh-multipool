@@ -411,9 +411,33 @@ export function readBridgeRequest(detail: unknown): BridgeRequest | undefined {
   return { callId, endpoint, payload: fields[BRIDGE_PAYLOAD] }
 }
 
-/** globalThis, seen as the one thing a window event needs to be. */
-function globalBridge(): BridgeTarget {
-  return globalThis as unknown as BridgeTarget
+/**
+ * The window both halves share, or undefined where there is none.
+ *
+ * `globalThis.window`, never `globalThis`. Inside Electron both globals exist, and nothing about one
+ * says anything about the other: a plugin loaded in a process whose `globalThis` is not the page's
+ * gets an object on which addEventListener is simply absent. That is the failure a real install
+ * reported -- "where.addEventListener is not a function" -- and it killed the entry before apply()
+ * could return a disposer, so the plugin vanished from the rail with no warning, because this plugin
+ * is not in boot's required set and a pending entry only draws a console line.
+ *
+ * Same shape as the two in docs/09 section 6.1.1: naming an object by what the test allows instead of
+ * by what the platform guarantees. A test's stub can be a window; a host process's globalThis cannot
+ * be made to be one.
+ *
+ * So the name is checked, and then the two methods this file actually calls are checked. A globalThis
+ * can be shaped differently in every host process -- including one where `window` exists as an object
+ * without an EventTarget on it -- and the useful question is never "is there a window" but "can this
+ * one be listened on and dispatched to".
+ */
+function globalBridge(): BridgeTarget | undefined {
+  const here = globalThis as { readonly window?: unknown }
+  const maybe = here.window
+  if (maybe === null || maybe === undefined || typeof maybe !== 'object') return undefined
+  const target = maybe as { readonly addEventListener?: unknown; readonly dispatchEvent?: unknown }
+  if (typeof target.addEventListener !== 'function') return undefined
+  if (typeof target.dispatchEvent !== 'function') return undefined
+  return maybe as BridgeTarget
 }
 
 /**
@@ -434,6 +458,10 @@ export function bridgeOf(
   // The default is resolved here rather than in the parameter list: an explicit undefined --
   // which is what options.target is when a host passes no window -- would wipe out a default.
   const where = target === undefined ? globalBridge() : target
+  // No window, no listener -- and saying so by doing nothing rather than by throwing. A host
+  // with no bus to attach to is the same shape as one with no carrier: the icon must still paint,
+  // and a throw from apply() removes the entry from the page entirely (docs/09 section 6.1).
+  if (where === undefined) return () => undefined
   const answer = answerOf(handle)
   const onRequest = (event: unknown): void => {
     const request = readBridgeRequest(

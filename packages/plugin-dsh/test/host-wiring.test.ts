@@ -186,6 +186,88 @@ describe('the host half asks the seam only when somebody is reading the answer',
   })
 })
 
+describe('the bridge attaches to the window, and to nothing else', () => {
+  it('attaches on effect(), not on apply(), and detaches when told to', () => {
+    // apply() only registers its body -- cordis runs it. A bridge that wired itself here would also
+    // outlive the disable that never ran the body, and this test would pass while the plugin leaked
+    // a listener per load.
+    const { context, effects, win } = contextOf({ hasInject: false })
+    const dispose = apply(context, { target: win })
+    const disposers = effects.map((effect) => effect())
+    expect(win.listening.has(BRIDGE_EVENT)).toBe(true)
+    for (const one of disposers) one()
+    expect(win.listening.has(BRIDGE_EVENT)).toBe(false)
+    dispose()
+  })
+
+  it('finds the window by name, and wires the bridge on it when asked with no target', () => {
+    // No target handed in: the one path a real install takes -- and the one path the other 55
+    // cases all skip by passing a stub. The window has to be found under `globalThis.window`.
+    const here = globalThis as { window?: unknown }
+    const had = Object.prototype.hasOwnProperty.call(here, 'window')
+    const was = here.window
+    const real = new FakeWindow()
+    here.window = real
+    try {
+      const arrived = contextOf({ hasInject: false })
+      const dispose = apply(arrived.context)
+      const disposers = arrived.effects.map((effect) => effect())
+      expect(real.listening.has(BRIDGE_EVENT)).toBe(true)
+      for (const one of disposers) one()
+      expect(real.listening.has(BRIDGE_EVENT)).toBe(false)
+      dispose()
+    } finally {
+      if (had) here.window = was
+      else delete here.window
+    }
+  })
+
+  it('opens without a window at all, and wires nothing', () => {
+    // A host process with no page: a headless run, a test, or a DSH whose renderer is not this one.
+    // apply() must still come up -- an entry that throws is removed from the page entirely, which is
+    // exactly how "where.addEventListener is not a function" made the plugin disappear.
+    const here = globalThis as { window?: unknown }
+    const had = Object.prototype.hasOwnProperty.call(here, 'window')
+    const was = here.window
+    delete here.window
+    try {
+      const arrived = contextOf({ hasInject: false })
+      expect(() => apply(arrived.context)).not.toThrow()
+      const disposers = arrived.effects.map((effect) => effect())
+      expect(() => {
+        for (const one of disposers) one()
+      }).not.toThrow()
+    } finally {
+      if (had) here.window = was
+    }
+  })
+
+  it('does not read the window off globalThis, which is a different object', () => {
+    // The failure a real install reported was globalBridge() returning globalThis: addEventListener
+    // was read off an object that does not have one, and the entry died inside apply() with
+    // "where.addEventListener is not a function". Node has no globalThis.window here, so the wrong
+    // lookup has nothing to find and apply() must still come up.
+    const here = globalThis as { readonly window?: unknown; readonly addEventListener?: unknown }
+    expect(here.addEventListener).toBeUndefined()
+    expect(here.window).toBeUndefined()
+
+    const arrived = contextOf({ hasInject: false })
+    expect(() => apply(arrived.context, { target: arrived.win })).not.toThrow()
+    const disposers = arrived.effects.map((effect) => effect())
+    expect(arrived.win.listening.has(BRIDGE_EVENT)).toBe(true)
+    for (const one of disposers) one()
+  })
+
+  it('closes what it opened, so a disable leaves the bus empty', () => {
+    const arrived = contextOf({ hasInject: false, configured: true })
+    apply(arrived.context, { target: arrived.win })
+    const disposers = arrived.effects.map((effect) => effect())
+    expect(arrived.win.listening.size).toBe(1)
+    for (const one of disposers) one()
+    expect(arrived.win.listening.size).toBe(0)
+  })
+})
+
 describe('the host half hands writes to the page, and performs none itself', () => {
   type Answer = { ok: boolean; value?: unknown; error?: { code: string; message: string } }
 
