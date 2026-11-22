@@ -227,29 +227,61 @@ window.__ModuleLoader__.load({
      * the same three dashes on screen. This asks again and keeps the reply, or the refusal, so
      * that one restart can tell the two apart. Delete it with the probe row that prints it.
      */
+
     var NO_TRACE = 'render only / build 225e244'
+    var traceStep = NO_TRACE
 
     function traceOf() {
-      if (bridgeOf() === undefined) return Promise.resolve('no window to ask on')
-      return request(ENDPOINT_SNAPSHOT, {}).then(
+      // Reports the step it reached instead of the answer it wanted, because the answer is what
+      // never arrived. A promise chain cannot say "I stopped between two and three"; a module-level
+      // string that each step overwrites can, and whatever the screen shows is the last step reached.
+      if (bridgeOf() === undefined) {
+        traceStep = '1 no window'
+        return Promise.resolve(traceStep)
+      }
+      callCount += 1
+      var callId = 'multipool-' + String(callCount)
+      return new Promise(function (settle) {
+        traceStep = '3 listener installed'
+        var timer = setTimeout(function () {
+          settle(traceStep + ' ; no reply in ' + String(CALL_TIMEOUT_MS) + 'ms')
+        }, CALL_TIMEOUT_MS)
+        function answer(event) {
+          var detail = event === null || event === undefined ? undefined : event.detail
+          var mine =
+            detail !== null && detail !== undefined && typeof detail === 'object'
+              ? 'detail ' + String(detail.callId) + ' ok ' + String(detail.ok)
+              : 'no detail'
+          traceStep = '4 heard ' + mine
+          settle(traceStep)
+          clearTimeout(timer)
+        }
+        window.addEventListener(BRIDGE_REPLY, answer)
+        traceStep = '5 dispatched'
+        window.dispatchEvent(askOf(callId, ENDPOINT_SNAPSHOT, {}))
+        traceStep = '6 dispatch returned'
+      })
+    }
+
+    /**
+     * The one command the page sends, and what it hands back.
+     *
+     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
+     * anything", and both of them are undefined-shaped at this line: the caller's next step is
+     * the same either way, so the difference is carried by the probe row, not by a second field.
+     */
+    function ask(endpoint, payload) {
+      return request(endpoint, payload).then(
         function (answer) {
-          return 'answered ' + JSON.stringify(answer)
+          return answer
         },
         function (thrown) {
-          return 'refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
+          // No host, no answer, no story to tell.
+          return undefined
         },
       )
     }
 
-    /** One endpoint of the channel: the payload in, the value out, or a rejection with the words. */
-    function ask(endpoint, payload) {
-      return request(endpoint, payload)
-    }
-
-    /** A command that could not be delivered. NO_WRITES is a host replying; this is not one. */
-    var COMMAND_FAILED = 'command failed'
-
-    /** The envelope a request never got back becomes, so a click has one shape to render. */
     function failed(thrown) {
       return {
         ok: false,
@@ -258,20 +290,69 @@ window.__ModuleLoader__.load({
       }
     }
 
-    /** The one command the page sends, kept on the page's side of the seam. */
-    function commandOf(request) {
-      return ask(ENDPOINT_COMMAND, { request: request }).then(
-        function (outcome) {
-          return outcome === undefined || outcome === null ? failed(new Error(NO_WRITES)) : outcome
+    /**
+     * The one command the page sends, and what it hands back.
+     *
+     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
+     * anything", and both of them are undefined-shaped at this line: the caller's next step is
+     * the same either way, so the difference is carried by the probe row, not by a second field.
+     */
+    function ask(endpoint, payload) {
+      return request(endpoint, payload).then(
+        function (answer) {
+          return answer
         },
-        failed,
+        function (thrown) {
+          // No host, no answer, no story to tell.
+          return undefined
+        },
       )
     }
 
+    function failed(thrown) {
+      return {
+        ok: false,
+        reason: COMMAND_FAILED,
+        message: thrown instanceof Error ? thrown.message : String(thrown),
+      }
+    }
 
+    /** Send the one command the page has, and hand back what the host says about it. */
+    function commandOf(request) {
+      return ask(ENDPOINT_COMMAND, { request: request }).then(function (outcome) {
+        if (outcome === undefined || outcome === null) return failed(new Error(NO_WRITES))
+        return outcome
+      })
+    }
 
-    // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a
-    // light/dark switch repaints them without this file knowing a single colour value.
+    /**
+     * The one command the page sends, and what it hands back.
+     *
+     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
+     * anything", and both of them are undefined-shaped at this line: the caller's next step is
+     * the same either way, so the difference is carried by the probe row, not by a second field.
+     */
+    function ask(endpoint, payload) {
+      return request(endpoint, payload).then(
+        function (answer) {
+          return answer
+        },
+        function (thrown) {
+          // No host, no answer, no story to tell.
+          return undefined
+        },
+      )
+    }
+
+    function failed(thrown) {
+      return {
+        ok: false,
+        reason: COMMAND_FAILED,
+        message: thrown instanceof Error ? thrown.message : String(thrown),
+      }
+    }
+
+    var COMMAND_FAILED = 'command failed'
     var LEVEL_TOKEN = {
       green: '--dsw-alias-state-success-primary',
       yellow: '--dsw-alias-state-warn-primary',
@@ -280,7 +361,13 @@ window.__ModuleLoader__.load({
       idle: '--dsw-alias-state-idle-primary',
     }
 
-
+    /** Send the one command the page has, and hand back what the host says about it. */
+    function commandOf(request) {
+      return ask(ENDPOINT_COMMAND, { request: request }).then(function (outcome) {
+        if (outcome === undefined || outcome === null) return failed(new Error(NO_WRITES))
+        return outcome
+      })
+    }
 
     /** The icon view the host is answering with right now, or the empty pool if it is not. */
     function viewOf() {

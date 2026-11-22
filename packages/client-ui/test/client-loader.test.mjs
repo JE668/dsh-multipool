@@ -201,7 +201,7 @@ test('a throw or a rejection comes back as a refusal, not as a rejected promise'
   const first = await throwing.commandOf({ name: 'forget' })
   assert.equal(first.ok, false)
   assert.equal(first.reason, 'command failed')
-  assert.equal(first.message, 'no transport')
+  assert.equal(first.message, 'no credential service')
 
   // A host that never answers is not a different shape from one that threw: both leaves settled.
   const second = await factory(busWindow(silentHost)).commandOf({ name: 'forget' })
