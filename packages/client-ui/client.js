@@ -179,7 +179,27 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** The icon view the host is answering with right now, or the empty pool if it is not. */
+    var NO_TRACE = 'not asked yet'
+
+    function traceOf() {
+      var rpc = rpcOf()
+      if (rpc === undefined) return Promise.resolve('no connection service on this page')
+      try {
+        return Promise.resolve(rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, {})).then(
+          function (answer) {
+            return 'answered ' + JSON.stringify(answer)
+          },
+          function (thrown) {
+            return 'refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
+          },
+        )
+      } catch (thrown) {
+        return Promise.resolve(
+          'threw: ' + (thrown instanceof Error ? thrown.message : String(thrown)),
+        )
+      }
+    }
+
     function viewOf() {
       return ask(ENDPOINT_SNAPSHOT, {}).then(
         function (view) {
@@ -311,9 +331,15 @@ window.__ModuleLoader__.load({
       const pair = React.useState(emptyView)
       const view = pair[0]
       const setView = pair[1]
+      const tracePair = React.useState(function () { return NO_TRACE })
+      const trace = tracePair[0]
+      const setTrace = tracePair[1]
 
       React.useEffect(function () {
         var live = true
+        traceOf().then(function (said) {
+          if (live) setTrace(said)
+        })
         viewOf().then(function (next) {
           // A row that unmounted before the answer came back must not set state on a gone tree.
           if (live) setView(next)
@@ -359,6 +385,14 @@ window.__ModuleLoader__.load({
         React.createElement('div', { key: 'title', style: styles.title },
           'AMD \u8d26\u53f7\u6c60'),
         React.createElement('div', { key: 'rows' }, rows),
+        // TEMPORARY (A of the two options): the verbatim outcome of one direct call, so a
+        // restart can tell a missing route from a refused one. Both look like three dashes
+        // above. Delete this line -- and traceOf/NO_TRACE with it -- once they are told apart.
+        React.createElement(
+          'div',
+          { key: 'trace', style: styles.note, 'data-multipool-trace': 'true' },
+          String(trace),
+        ),
       ]
 
       return React.createElement(
