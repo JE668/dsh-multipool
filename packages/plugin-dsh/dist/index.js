@@ -1,8 +1,8 @@
 /**
  * Host half of dsh-multipool.
  *
- * The plugin serves one RPC channel (packages/plugin-dsh/src/channel.ts) to the page and hands
- * it the facts it has. Scheduling, the key store and the local proxy arrive in their own
+ * The plugin puts one window bridge (packages/plugin-dsh/src/channel.ts) in front of the page and
+ * hands it the facts it has. Scheduling, the key store and the local proxy arrive in their own
  * tasks; until they do, those facts are "nothing has been read yet", which source.ts spells as
  * `undefined` rather than as zero.
  *
@@ -12,24 +12,25 @@
  *   naming it here parked this entry in "pending (waiting for service: slots)" forever -- the
  *   host fiber would never see it. `apply` reads nothing but `ctx.effect` and `ctx.inject`, which
  *   every context has.
- * - `connection` is asked for with `ctx.inject`, never listed in `inject`, for the same reason
- *   `credentials` is: the icon has to exist on a DSH with no RPC carrier to hang it on, and answer
- *   dashes there. Where one does exist, `connection.rpc.handle(CHANNEL, handleOf(...))` registers
- *   one prefix route on the web server this process already serves -- the registration api-gateway
- *   makes for `/api`, and the only place authentication is going to come from.
+ * - The bridge is `window` events, and asks for no service at all (T-2-b). It used to be
+ *   `connection.rpc.handle` on a web route; that never activated, because `connection` is provided
+ *   inside DSH's own client bundle and not to a plugin loaded from a profile, so the injection never
+ *   called back and the icon dashed while the host was running fine. Two events need no provider.
+ *   The trade is stated in docs/09: no authentication, so the page is trusted.
  * - `credentials` is asked for with `ctx.inject`, never listed in `inject`, and takes no part in
  *   whether this plugin activates (T-2-e). A key is what makes it able to send, not what makes it
  *   load: a DSH built without dsh-credentials-local (or with it disabled) must still show the icon,
  *   and the icon's honest answer there is "no credential service", not a refused plugin. The
  *   child's status is reported through `onKeyStatus` and nothing else in this file waits on it.
- * - `apply(ctx)` opens the channel and registers the route inside `ctx.effect`, so disabling the
- *   plugin disposes it and leaves no route behind, and publishing stays pull-based: `apply` opens,
- *   it does not publish. Nothing here schedules a timer of its own (docs/05 section 4.3).
+ * - `apply(ctx)` opens the channel and attaches the bridge listener inside `ctx.effect`, so
+ *   disabling the plugin detaches it and leaves no listener behind, and publishing stays
+ *   pull-based: `apply` opens, it does not publish. Nothing here schedules a timer of its own
+ *   (docs/05 section 4.3).
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
 import { createSystemClock } from './vendor/core/index.js';
-import { AMD_KEY_REF_NAME, CHANNEL, handleOf, openChannel, COMMAND_NO_WRITES, } from './channel.js';
+import { AMD_KEY_REF_NAME, bridgeOf, openChannel, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
 export const VERSION = '0.0.2-rc.4';
@@ -59,12 +60,10 @@ const writesFor = (seam) => ({
     save: (key) => writeKeyStatus({ credentials: seam }, key, AMD_KEY_REF_NAME).then(outcomeOf),
     forget: () => clearKeyStatus({ credentials: seam }, AMD_KEY_REF_NAME).then(outcomeOf),
 });
-/** `connection`'s service name (dsh-client-connection: super(ctx, 'connection')). */
-export const CONNECTION_SERVICE = 'connection';
 /**
  * ctx.inject, or a no-op when the context predates the mixin.
  *
- * Both of apply()'s injections go through here, so "this DSH has no inject" stays one branch
+ * apply()'s one remaining injection goes through here, so "this DSH has no inject" stays one branch
  * instead of two, and a context that cannot inject is still a context the icon activates on.
  */
 function injectOf(ctx, names, callback) {
@@ -99,18 +98,13 @@ export function apply(ctx, options = {}) {
         const budget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES };
         const channel = openChannel({ source, budget });
         const drops = [];
-        // The route comes first because it is the only thing that makes the icon reachable at all: an
-        // opened channel nobody can call is a handle dropped on the floor. Both go through the child
-        // context's effect, so the disposer list below is what makes a disable leave no prefix behind.
+        // The bridge comes first because it is the only thing that makes the icon reachable at all: an
+        // opened channel nobody can ask is a handle dropped on the floor.
         //
-        // Asked for, never listed in `inject`: on a DSH with no connection service this plugin must
-        // still activate and still draw the icon, whose honest answer there is the dash.
-        drops.push(injectOf(ctx, [CONNECTION_SERVICE], child => {
-            const connection = child.connection;
-            if (connection === undefined)
-                return;
-            drops.push(connection.rpc.handle(CHANNEL, handleOf(channel)));
-        }));
+        // No injection, and nothing to wait for: window events live on the window this process already
+        // has. The previous route did wait, on a `connection` service that DSH provides only to its own
+        // client bundle, so the callback never came and the icon dashed while the host was healthy.
+        drops.push(bridgeOf(channel, options.target));
         // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
         // the page's listener table, which is what the comment above "no inject" promises in practice.
         const onKeyStatus = options.onKeyStatus;
@@ -138,5 +132,5 @@ export function apply(ctx, options = {}) {
 export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
-export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, buildPublishedView, handleOf, openChannel, } from './channel.js';
+export { BRIDGE_EVENT, BRIDGE_REPLY, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, bridgeOf, buildPublishedView, openChannel, readBridgeRequest, } from './channel.js';
 //# sourceMappingURL=index.js.map

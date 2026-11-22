@@ -1,8 +1,8 @@
 /**
  * Host half of dsh-multipool.
  *
- * The plugin serves one RPC channel (packages/plugin-dsh/src/channel.ts) to the page and hands
- * it the facts it has. Scheduling, the key store and the local proxy arrive in their own
+ * The plugin puts one window bridge (packages/plugin-dsh/src/channel.ts) in front of the page and
+ * hands it the facts it has. Scheduling, the key store and the local proxy arrive in their own
  * tasks; until they do, those facts are "nothing has been read yet", which source.ts spells as
  * `undefined` rather than as zero.
  *
@@ -12,22 +12,24 @@
  *   naming it here parked this entry in "pending (waiting for service: slots)" forever -- the
  *   host fiber would never see it. `apply` reads nothing but `ctx.effect` and `ctx.inject`, which
  *   every context has.
- * - `connection` is asked for with `ctx.inject`, never listed in `inject`, for the same reason
- *   `credentials` is: the icon has to exist on a DSH with no RPC carrier to hang it on, and answer
- *   dashes there. Where one does exist, `connection.rpc.handle(CHANNEL, handleOf(...))` registers
- *   one prefix route on the web server this process already serves -- the registration api-gateway
- *   makes for `/api`, and the only place authentication is going to come from.
+ * - The bridge is `window` events, and asks for no service at all (T-2-b). It used to be
+ *   `connection.rpc.handle` on a web route; that never activated, because `connection` is provided
+ *   inside DSH's own client bundle and not to a plugin loaded from a profile, so the injection never
+ *   called back and the icon dashed while the host was running fine. Two events need no provider.
+ *   The trade is stated in docs/09: no authentication, so the page is trusted.
  * - `credentials` is asked for with `ctx.inject`, never listed in `inject`, and takes no part in
  *   whether this plugin activates (T-2-e). A key is what makes it able to send, not what makes it
  *   load: a DSH built without dsh-credentials-local (or with it disabled) must still show the icon,
  *   and the icon's honest answer there is "no credential service", not a refused plugin. The
  *   child's status is reported through `onKeyStatus` and nothing else in this file waits on it.
- * - `apply(ctx)` opens the channel and registers the route inside `ctx.effect`, so disabling the
- *   plugin disposes it and leaves no route behind, and publishing stays pull-based: `apply` opens,
- *   it does not publish. Nothing here schedules a timer of its own (docs/05 section 4.3).
+ * - `apply(ctx)` opens the channel and attaches the bridge listener inside `ctx.effect`, so
+ *   disabling the plugin detaches it and leaves no listener behind, and publishing stays
+ *   pull-based: `apply` opens, it does not publish. Nothing here schedules a timer of its own
+ *   (docs/05 section 4.3).
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
+import { type BridgeTarget } from './channel.js';
 import { type KeyStatus } from './credentials.js';
 import type { CredentialSeam } from './key-store.js';
 import { channelSourceFrom } from './source.js';
@@ -52,21 +54,23 @@ export interface HostOptions {
      * credential provider stays absent from it instead of being described as missing one.
      */
     readonly acceptsWrites?: boolean;
+    /**
+     * Where the bridge listens. Defaults to `globalThis`, which is the renderer's window in DSH.
+     *
+     * A test has no window and should not be handed one: it passes a plain object here and dispatches
+     * on it. Same seam as the old ChannelTarget, one process simpler.
+     */
+    readonly target?: BridgeTarget;
 }
-/** `connection`'s service name (dsh-client-connection: super(ctx, 'connection')). */
-export declare const CONNECTION_SERVICE = "connection";
-/** What an injection hands back: whichever of the named services the context has. */
+/**
+ * What an injection hands back: whichever of the named services the context has.
+ *
+ * Only `credentials` is here now. The bridge stopped being a service when it moved to window events
+ * -- a window is not something a context provides, so there was nothing left to inject for it.
+ */
 interface InjectedServices {
     readonly credentials?: CredentialSeam;
-    readonly connection?: {
-        readonly rpc: {
-            readonly handle: (channel: string, handler: (endpoint: string, payload: unknown) => Promise<unknown>) => () => void;
-        };
-    };
 }
-export type ConnectionContext = {
-    readonly connection?: InjectedServices['connection'];
-};
 /** The channel's lifetime is the plugin's lifetime. */
 export declare function apply(ctx: {
     effect(callback: () => () => void): () => void;
@@ -75,5 +79,5 @@ export declare function apply(ctx: {
 export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyLayer, type KeyState, type KeyWrite } from './key-store.js';
-export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, buildPublishedView, handleOf, openChannel, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, } from './channel.js';
+export { BRIDGE_EVENT, BRIDGE_REPLY, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, bridgeOf, buildPublishedView, openChannel, readBridgeRequest, type BridgeAnswer, type BridgeReply, type BridgeRequest, type BridgeTarget, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, } from './channel.js';
 //# sourceMappingURL=index.d.ts.map

@@ -6,12 +6,20 @@
  * scheduler, not the proxy -- except a command, which is one of the two endpoints in here and
  * only runs when the page asks for it (T-2-e).
  *
- * The view reaches the page over `connection.rpc` (dsh-client-connection), not over a window
- * key. That key used to be the design: the host wrote a live object onto globalThis, and the
- * page read it. It could not work, because the two halves are two processes and globalThis is
- * one per process -- but the tests all passed, since a test hands both halves the same global.
- * An HTTP channel is what both processes can actually reach, and it brings the authentication
- * this file would otherwise have had to invent: `rpc.handle` admits, this module answers.
+ * The view reaches the page over two `window` events agreed on below, not over a window key.
+ *
+ * Two earlier designs were tried and both failed in the same place. A key failed because the two
+ * halves are two processes unrestrained by anything but hope: the host wrote, the page read
+ * nothing, and every test passed because a test hands both halves one global. `connection.rpc`
+ * (dsh-client-connection) then failed because the browser half provides that service only inside
+ * DSH's own client bundle, not to a plugin loaded from a profile -- no `connection` on the page,
+ * `ctx.inject(['connection'], ...)` never called back, and the icon drew dashes while the host it
+ * could not reach was running fine.
+ *
+ * What is left is the window both halves demonstrably share in DSH desktop, which is the
+ * renderer's. The cost is stated here rather than discovered later: a window event carries no
+ * authentication, so this is a same-process conversation, and any script already running on the
+ * page could answer in the host's place. Nothing in this file claims otherwise (docs/09).
  *
  * Three rules shape the code below.
  *
@@ -33,20 +41,33 @@ import { type Account, type MetricsEvent, type ProviderId, type Snapshot, type U
 import { type IconView } from '@dsh-multipool/plugin-client';
 import type { KeyLayer } from './key-store.js';
 /**
- * The RPC channel the page calls.
+ * The two window events the halves talk over.
  *
- * One segment, and no slash inside it: dsh-client-connection tests a host channel against
- * /^\/[A-Za-z0-9._~-]+$/ and refuses the rest, reserving `/api` for the gateway it owns itself.
- * Rejected channel names fail at registration, so this constant is the only place the name is
- * spelled -- an endpoint below only ever appends one segment to it.
+ * `page` is what the page dispatches and the host listens for; `host` is the answer, and it names
+ * the side that sends it rather than the side that receives it, so neither name has to be read
+ * from the other's point of view. Both are namespaced under `dsh-multipool:` because a window
+ * event bus is shared with every other plugin in the profile, and an unprefixed name is a
+ * collision waiting for the second plugin to be written.
+ *
+ * The payload rule is the same one the view itself follows (docs/03): what travels is JSON, never
+ * a function, a class instance, or a live handle. Each event names its endpoint (see
+ * ENDPOINT_SNAPSHOT and ENDPOINT_COMMAND), so a third endpoint is one more string here and one
+ * more branch in dispatch(), not a second event pair to keep in sync.
  */
-export declare const CHANNEL = "/multipool";
-/** The two endpoints `CHANNEL` serves; every other name is refused, see dispatch(). */
+export declare const BRIDGE_EVENT = "dsh-multipool:bridge";
+export declare const BRIDGE_REPLY = "dsh-multipool:bridge-reply";
+/**
+ * The endpoint names the page may ask for over BRIDGE_EVENT.
+ *
+ * These used to be RPC endpoint names under CHANNEL = '/multipool'. They keep their spelling so the
+ * two halves of this repo still speak one vocabulary, and they are now the only part of the
+ * request the host trusts before it has looked at the payload.
+ */
 export declare const ENDPOINT_SNAPSHOT = "snapshot";
 export declare const ENDPOINT_COMMAND = "command";
 /**
- * What the browser half calls. Mirrors the shape client.js expects on
- * window.connection.rpc, reached as connection.rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, {}).
+ * What the browser half asks for. The page dispatches BRIDGE_EVENT with one of these and listens on
+ * BRIDGE_REPLY for the matching callId.
  */
 export interface Channel {
     /** ENDPOINT_SNAPSHOT: the current view, as it stands, JSON on the wire. */
@@ -161,18 +182,18 @@ export declare function buildPublishedView(source: ChannelSource, budget: IconBu
  * what the two endpoints answer.
  */
 export declare function openChannel(options: OpenChannelOptions): ChannelHandle;
-/**
- * The `connection.rpc.handle` callback: one JSON payload per endpoint name, one JSON answer.
- *
- * `handler` is handed the endpoint the caller asked for and a payload that is already plain JSON.
- * Both endpoints answer in the shape the transport on the other side parses -- { ok, value } or
- * { ok: false, error } -- and neither answer may carry a function, a class instance, or a live
- * handle.
- *
- * An unknown endpoint is refused by name. The same argument as rule 3 above applies one level up:
- * the set of endpoints is the whole surface a page can reach, so it stays a list somebody reads.
- */
-export declare function handleOf(handle: ChannelHandle): (endpoint: string, payload: unknown) => Promise<{
+/** The shape BRIDGE_REPLY sends back: the endpoint's answer, plus which call it answers. */
+export interface BridgeReply {
+    readonly callId: string;
+    readonly ok: boolean;
+    readonly value?: unknown;
+    readonly error?: {
+        readonly code: string;
+        readonly message: string;
+    };
+}
+/** One bridge call answered, before it is given a callId. The same envelope as BridgeReply. */
+export type BridgeAnswer = {
     readonly ok: true;
     readonly value: unknown;
 } | {
@@ -181,5 +202,57 @@ export declare function handleOf(handle: ChannelHandle): (endpoint: string, payl
         readonly code: string;
         readonly message: string;
     };
-}>;
+};
+/**
+ * A minimal window: one listener to add, one event to dispatch-back, and nothing else.
+ *
+ * Written out instead of taking the DOM's Window so a test can hand over a plain object and the
+ * host half never needs a browser to typecheck. In DSH the real value is `globalThis`.
+ */
+export interface BridgeTarget {
+    addEventListener(type: string, listener: (event: unknown) => void): unknown;
+    removeEventListener(type: string, listener: (event: unknown) => void): unknown;
+    dispatchEvent(event: {
+        readonly type: string;
+        readonly detail?: unknown;
+    }): unknown;
+}
+/**
+ * The endpoint table: one JSON payload per endpoint name, one JSON answer.
+ *
+ * `payload` arrives already parsed out of the event. Both endpoints answer in the envelope the
+ * page parses -- { ok, value } or { ok: false, error } -- and no answer may carry a function, a
+ * class instance, or a live handle (that is what KeyReading rather than KeyStatus is for below).
+ *
+ * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
+ * surface a page can reach, so it stays a list somebody reads.
+ */
+export declare function answerOf(handle: ChannelHandle): (endpoint: string, payload: unknown) => Promise<BridgeAnswer>;
+/** What a bridge request says, once its shape has been checked and nothing has been assumed. */
+export interface BridgeRequest {
+    readonly callId: string;
+    readonly endpoint: string;
+    readonly payload: unknown;
+}
+/**
+ * Reads one BRIDGE_EVENT detail, or nothing when this event is not ours.
+ *
+ * Kept apart from the listener so a test can hand it a plain object and never touch a window. A
+ * detail with no string callId or no string endpoint is not a malformed request to refuse -- it is
+ * somebody else's event, or a stray dispatch with no fields, and the ordinary answer to both is to
+ * not answer.
+ */
+export declare function readBridgeRequest(detail: unknown): BridgeRequest | undefined;
+/**
+ * Wires BRIDGE_EVENT on `target` to `handle`, and sends each answer back on BRIDGE_REPLY.
+ *
+ * The two events are how the halves reach each other now. The page dispatches one; this process
+ * listens, answers, and dispatches the other with the caller's own callId, so two requests in
+ * flight cannot swap answers. `target` is `globalThis` in DSH, where host and page are the same
+ * Electron renderer -- which is also the whole reason there is no authentication here (docs/09).
+ *
+ * The returned disposer removes the listener, and is what makes a disable leave nothing behind on
+ * the bus: the same promise route registration made, now checkable without a web server.
+ */
+export declare function bridgeOf(handle: ChannelHandle, target?: BridgeTarget | undefined): () => void;
 //# sourceMappingURL=channel.d.ts.map

@@ -6,7 +6,7 @@ import {
   COMMAND_UNKNOWN,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
-  handleOf,
+  answerOf,
   openChannel,
   type ChannelSource,
   type ChannelWrites,
@@ -57,7 +57,7 @@ describe('channel', () => {
       budget: BUDGET,
       pointsProviderId: 'amd',
     })
-    const answer = handleOf(handle)
+    const answer = answerOf(handle)
     expect(handle.isPublished()).toBe(false)
     const view = viewOf(await answer(ENDPOINT_SNAPSHOT, {}))
     expect(handle.isPublished()).toBe(true)
@@ -87,7 +87,7 @@ describe('channel', () => {
   it('rebuilds on every call, so the second answer is not the first one frozen', async () => {
     let accounts: Account[] = [acct('amd', 'AMD-A', 'available')]
     const source: ChannelSource = { ...sourceOf([]), accounts: () => accounts }
-    const answer = handleOf(openChannel({ source, budget: BUDGET, pointsProviderId: 'amd' }))
+    const answer = answerOf(openChannel({ source, budget: BUDGET, pointsProviderId: 'amd' }))
     expect(viewOf(await answer(ENDPOINT_SNAPSHOT, undefined)).badge).toBe('1/1')
     accounts = [acct('amd', 'AMD-A', 'available'), acct('amd', 'AMD-B', 'available')]
     expect(viewOf(await answer(ENDPOINT_SNAPSHOT, undefined)).badge).toBe('2/2')
@@ -106,7 +106,7 @@ describe('channel', () => {
   })
 
   it('refuses an endpoint it does not have, and names it', async () => {
-    const answer = handleOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
+    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
     expect(await answer('save', { request: { name: 'save', key: 'rc-x' } })).toEqual({
       ok: false,
       error: { code: 'multipool/unknown-endpoint', message: 'no endpoint "save"' },
@@ -119,7 +119,7 @@ describe('channel', () => {
 
   it('close() leaves the channel answering nothing it can honour', async () => {
     const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
-    const answer = handleOf(handle)
+    const answer = answerOf(handle)
     handle.publish()
     handle.close()
     expect(handle.isPublished()).toBe(false)
@@ -153,7 +153,7 @@ describe('the command half (T-2-e)', () => {
   }
 
   const commandThrough = async (handle: ReturnType<typeof openChannel>, request: unknown) => {
-    const answer = await handleOf(handle)(ENDPOINT_COMMAND, { request })
+    const answer = await answerOf(handle)(ENDPOINT_COMMAND, { request })
     return (answer as { value: unknown }).value
   }
 

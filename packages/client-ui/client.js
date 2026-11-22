@@ -11,15 +11,19 @@
  * spelled out instead of imported, and icon-state.test.ts holds the two copies to one answer over
  * a shared table of snapshots.
  *
- * The host half runs in a different process, so the two do not share a global and cannot. They meet
- * on the connection service instead, which both processes hold and which carries authentication:
+ * The host half runs in a different process. Two designs for the seam between them are gone: a
+ * window key, which the halves do not share because globalThis is one per process (the tests passed
+ * by handing both halves the same global), and the connection service, which DSH provides inside its
+ * own client bundle and therefore hands to none of the plugins a profile loads. What both processes
+ * do have is the renderer's window, so the request is an event on it:
  *
- *   connection.rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, payload)   -> { ok: true, value: IconView }
- *   connection.rpc.call(CHANNEL, ENDPOINT_COMMAND, { request })  -> { ok: true, value: CommandOutcome }
+ *   dispatch  BRIDGE_EVENT  { callId, endpoint: 'snapshot', payload }  -> { ok: true, value: IconView }
+ *   dispatch  BRIDGE_EVENT  { callId, endpoint: 'command',  payload: { request } }
+ *                        -> { ok: true, value: CommandOutcome }
  *
  * The call is the request. There is no subscribe: the icon asks when it paints, and the panel asks
- * when it is opened, which is the only moment either answer is looked at. A host that is
- * not running cannot refuse the request, it cannot be asked -- and the failed call is the dash.
+ * when it is opened, which is the only moment either answer is looked at. A host that is not
+ * running never dispatches a reply, the callId never comes back, and the timeout is the dash.
  *
  * Until a snapshot arrives the icon paints the empty pool: idle, --/--, three dashes. That is the
  * right answer for a fresh install, and for a host that is not running it is the only answer we
@@ -29,9 +33,8 @@ window.__ModuleLoader__.load({
   id: 'dsh-multipool',
   factory(require) {
     const React = require('react')
-    // The Host half registers exactly this channel (packages/plugin-dsh/src/channel.ts).
-    // One segment: dsh-client-connection validates it against /^\/[A-Za-z0-9._~-]+$/.
-    var CHANNEL = '/multipool'
+    // Spelled exactly as the Host half spells them (packages/plugin-dsh/src/channel.ts); nothing
+    // can check that at runtime except this file and its test, which is why they are re-typed.
     var ENDPOINT_SNAPSHOT = 'snapshot'
     var ENDPOINT_COMMAND = 'command'
     var NO_VALUE = '\u2014'
@@ -137,69 +140,138 @@ window.__ModuleLoader__.load({
     // the call was answered -- and the store's words inside, so it passes through untouched.
     var NO_WRITES = 'no credential service'
 
-    /** The rpc face of the connection service, or undefined on a host that has none. */
-    function rpcOf() {
-      var connection = typeof window === 'undefined' ? undefined : window.connection
-      if (connection === undefined || connection === null) return undefined
-      if (connection.rpc === undefined || connection.rpc === false || connection.rpc === null) return undefined
-      if (typeof connection.rpc.call !== 'function') return undefined
-      return connection.rpc
+    // Host and page are two processes, but in DSH desktop they share one renderer, and the
+    // window is the object both of them can reach. The channel used to be `connection.rpc`, which
+    // the page provides only to DSH's own client bundle -- a plugin loaded from a profile got
+    // nothing and drew dashes over a host that was running. Two events need no provider.
+    //
+    // What that trades away: a window event carries no authentication. Any script already on
+    // the page could answer in the host's place. Nothing below treats an answer as proof of
+    // anything; it is printed, and the printing is where it is checked (docs/09).
+    var BRIDGE_EVENT = 'dsh-multipool:bridge'
+    var BRIDGE_REPLY = 'dsh-multipool:bridge-reply'
+    var CALL_TIMEOUT_MS = 4000
+
+    /** The window the bridge speaks on, or undefined where there is none. */
+    function bridgeOf() {
+      if (typeof window === 'undefined') return undefined
+      if (window === null) return undefined
+      if (typeof window.addEventListener !== 'function') return undefined
+      if (typeof window.dispatchEvent !== 'function') return undefined
+      return window
     }
 
+    var callCount = 0
+
+    /**
+     * One endpoint, asked on the window and answered on the window.
+     *
+     * The callId keeps two asks apart: both halves share one bus, so a reply is matched to its
+     * own request rather than to whatever came back first. The promise rejects -- never resolves
+     * undefined -- when there is no window, when nothing answered in time, or when the answer was
+     * a refusal, so callers keep just two branches: the host said no, or no host was listening.
+     */
+    function request(endpoint, payload) {
+      var bridge = bridgeOf()
+      if (bridge === undefined) return Promise.reject(new Error(NO_WRITES))
+      callCount += 1
+      var callId = 'multipool-' + String(callCount)
+      return new Promise(function (keep, fail) {
+        var settled = false
+        var timer = null
+        function answer(event) {
+          if (settled) return
+          var detail = event === null || event === undefined ? undefined : event.detail
+          if (detail === null || detail === undefined || typeof detail !== 'object') return
+          if (detail.callId !== callId) return
+          settled = true
+          clearTimeout(timer)
+          bridge.removeEventListener(BRIDGE_REPLY, answer)
+          if (detail.ok === true) {
+            keep(detail.value)
+            return
+          }
+          var said = detail.error === null || detail.error === undefined ? undefined : detail.error.message
+          fail(new Error(said === undefined ? NO_WRITES : String(said)))
+        }
+        timer = setTimeout(function () {
+          if (settled) return
+          settled = true
+          bridge.removeEventListener(BRIDGE_REPLY, answer)
+          fail(new Error(NO_WRITES))
+        }, CALL_TIMEOUT_MS)
+        bridge.addEventListener(BRIDGE_REPLY, answer)
+        bridge.dispatchEvent({
+          type: BRIDGE_EVENT,
+          detail: { callId: callId, endpoint: endpoint, payload: payload },
+        })
+      })
+    }
+
+    /**
+     * TEMPORARY (T-2-b): what the bridge said, in its own words.
+     *
+     * viewOf() has one failure answer -- the empty pool -- because the icon must paint
+     * something. That makes 'the listener is not attached' and 'the host answered nothing'
+     * the same three dashes on screen. This asks again and keeps the reply, or the refusal, so
+     * that one restart can tell the two apart. Delete it with the probe row that prints it.
+     */
+    var NO_TRACE = 'not asked yet'
+
+    function traceOf() {
+      if (bridgeOf() === undefined) return Promise.resolve('no window to ask on')
+      return request(ENDPOINT_SNAPSHOT, {}).then(
+        function (answer) {
+          return 'answered ' + JSON.stringify(answer)
+        },
+        function (thrown) {
+          return 'refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
+        },
+      )
+    }
+
+    /** One endpoint of the channel: the payload in, the value out, or a rejection with the words. */
+    function ask(endpoint, payload) {
+      return request(endpoint, payload)
+    }
+
+    /** A command that could not be delivered. NO_WRITES is a host replying; this is not one. */
+    var COMMAND_FAILED = 'command failed'
+
+    /** The envelope a request never got back becomes, so a click has one shape to render. */
     function failed(thrown) {
       return {
         ok: false,
-        reason: NO_WRITES,
+        reason: COMMAND_FAILED,
         message: thrown instanceof Error ? thrown.message : String(thrown),
       }
     }
 
-    /** One endpoint of the channel: the envelope in, the value out, or the failure. */
-    function ask(endpoint, payload) {
-      var rpc = rpcOf()
-      if (rpc === undefined) return Promise.reject(new Error(NO_WRITES))
-      var reply
-      try {
-        reply = Promise.resolve(rpc.call(CHANNEL, endpoint, payload))
-      } catch (thrown) {
-        return Promise.reject(thrown)
-      }
-      return reply.then(function (answer) {
-        if (answer === undefined || answer === null || answer.ok !== true) return undefined
-        return answer.value
-      })
-    }
-
+    /** The one command the page sends, kept on the page's side of the seam. */
     function commandOf(request) {
       return ask(ENDPOINT_COMMAND, { request: request }).then(
         function (outcome) {
-          return outcome === undefined ? failed(new Error(NO_WRITES)) : outcome
+          return outcome === undefined || outcome === null ? failed(new Error(NO_WRITES)) : outcome
         },
         failed,
       )
     }
 
-    var NO_TRACE = 'not asked yet'
 
-    function traceOf() {
-      var rpc = rpcOf()
-      if (rpc === undefined) return Promise.resolve('no connection service on this page')
-      try {
-        return Promise.resolve(rpc.call(CHANNEL, ENDPOINT_SNAPSHOT, {})).then(
-          function (answer) {
-            return 'answered ' + JSON.stringify(answer)
-          },
-          function (thrown) {
-            return 'refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
-          },
-        )
-      } catch (thrown) {
-        return Promise.resolve(
-          'threw: ' + (thrown instanceof Error ? thrown.message : String(thrown)),
-        )
-      }
+
+    // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a
+    // light/dark switch repaints them without this file knowing a single colour value.
+    var LEVEL_TOKEN = {
+      green: '--dsw-alias-state-success-primary',
+      yellow: '--dsw-alias-state-warn-primary',
+      red: '--dsw-alias-state-error-primary',
+      grey: '--dsw-alias-state-idle-primary',
+      idle: '--dsw-alias-state-idle-primary',
     }
 
+
+
+    /** The icon view the host is answering with right now, or the empty pool if it is not. */
     function viewOf() {
       return ask(ENDPOINT_SNAPSHOT, {}).then(
         function (view) {
@@ -211,16 +283,6 @@ window.__ModuleLoader__.load({
           return emptyView()
         },
       )
-    }
-
-    // The four states ride on host tokens that exist (dsh-doc references/ui-plugin.md), so a
-    // light/dark switch repaints them without this file knowing a single colour value.
-    var LEVEL_TOKEN = {
-      green: '--dsw-alias-state-success-primary',
-      yellow: '--dsw-alias-state-warn-primary',
-      red: '--dsw-alias-state-error-primary',
-      grey: '--dsw-alias-state-idle-primary',
-      idle: '--dsw-alias-state-idle-primary',
     }
 
     function levelColor(level) {
@@ -268,12 +330,20 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      const small = props.size <= 16
       const title = view.lines.accounts + '\n' + view.lines.rpm + '\n' + view.lines.points
 
       // Sidebar renders this row at 16px expanded and 18px collapsed -- not the 24px that
       // docs/05 section 2.1 draws, which is the slot rather than the prop. A threshold keyed on
       // a 24px assumption therefore never fired, and every rail kept a bordered text box
       // where docs/05 describes a dot. The corner keeps its fraction in the tooltip.
+      //
+      // Which is why the size is not a literal here: both it and the border are, and idle changes
+      // both at once. A hollow ring of the same 6px reads thinner than a filled dot does the moment
+      // the dot sits on a light background, so idle draws one ring-size larger with a transparent
+      // centre -- an outline, not a smaller hole.
+      const idle = view.level === 'idle'
+      const corner = small ? (idle ? 8 : 6) : 14
       const badge = React.createElement(
         'span',
         {
@@ -281,14 +351,24 @@ window.__ModuleLoader__.load({
           'aria-hidden': true,
           style: {
             position: 'absolute',
-            right: -1,
-            bottom: -1,
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            background: levelColor(view.level),
+            right: small ? -1 : -4,
+            bottom: small ? -1 : -4,
+            width: corner,
+            height: corner,
+            boxSizing: 'border-box',
+            borderRadius: corner / 2,
+            // An unheard host has no fraction to print, so it prints none: idle is the one level
+            // drawn hollow. Every other level fills, because every other level is a count.
+            border: idle ? (small ? '1.5px solid ' : '1px solid ') + levelColor('idle') : undefined,
+            background: idle ? 'transparent' : levelColor(view.level),
+            color: idle ? levelColor('idle') : undefined,
+            fontSize: idle ? 9 : undefined,
+            fontWeight: idle ? 600 : undefined,
+            lineHeight: idle ? '12px' : undefined,
+            textAlign: idle ? 'center' : undefined,
           },
         },
+        idle || small ? undefined : String(view.counts.available),
       )
       return React.createElement(
         'span',

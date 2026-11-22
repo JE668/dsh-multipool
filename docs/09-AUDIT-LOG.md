@@ -201,25 +201,52 @@ findings 输出按文件名字典序、再按行号排序，每行一个。最�
 | `docs/06-TASKS.md` 的引用错位 | 清理过一轮，可能残留 | 这一类闸 4 能抓（带文件名号的），不带文件名的裸 `§x` 抓不到 |
 | 空的 `test/fixtures/` 目录 | `git ls-files` 看不到（git 不存空目录） | 夹具都以 `FakeUpstream` 的**内存代码**形式存在于测试文件内，没有独立 fixture 文件——这与 `07 §0` 描述的「夹具基础设施」是一致的，但意味着每个用例都要自己在测试里搭 |
 
-### 6.1 「插件本体还不存在」——这不是 bug，但你必须知道
+### 6.1 闸绿到底证明了什么（这一节过期过一次，留作例子）
 
-`packages/plugin-dsh/src/index.ts` 与 `packages/client-ui/src/index.ts` 各自只有一行：
+本节此前的写法是「插件本体还不存在，`packages/plugin-dsh/src/index.ts` 与 `packages/client-ui/src/index.ts`
+各自只有一行 `export const VERSION`」。这句在写下那天是事实，在今天不是：两个包各自有几百行。
 
-```
-export const VERSION = '…'
-```
+**它就是这么烂掉的**：没人改它，因为没人读到它；代码烂了测试会红，文档烂了只会在下一次
+有人引用它时安静地误导一次。这一节保留，作为 `audit: clean` 最需要配的注脚——
+`audit: clean` 只说明**这五道闸各自测的东西没退化**，它不说明被测的东西覆盖了插件。
 
-仓库目前是**规格书 + 契约原语 + 审计工具**，`packages/core` 只实现了
-「与业务无关但容易写错」的那一层：十进制算价、北京日界、epoch 归一、Retry-After 解析、Key 掩码、
-可注入时钟。没有适配器、没有调度器、没有本地代理、没有 UI 组件。
+当前 `audit: clean` 覆盖到的（真实，可复现）：
 
-所以 `audit: clean` 的含义是：**规格书内部自洽、契约原语没退化**。
-它**不**意味着插件能用、能防 429、能显示额度——这些还没有一行代码。
-`docs/06-TASKS.md` 里 T-0-a 之后的所有任务都仍是未开工状态。
-读到 `audit: clean` 就以为「第一批交付了」，是最可能发生的误读。
+- `packages/core`：十进制算价、北京时间日界、epoch 归一、Retry-After 解析、Key 掩码与拒绝前缀、
+  IP 级限流分类、断路器的三态与窗口、rollup 折并、快照聚合与脱敏导出、AMD 设置校验及其引用。
+- `packages/plugin-dsh`：命令半的名字分派与拒收顺序、凭据接缝的读写与确认重读、
+  `apply` 在无 `inject` / `inject` 抛错 / 无读方的三种 ctx 上都能激活。
+- `packages/client-ui`：图标四态（绿/黄/红/idle）、`—` 不变成 `0`、图标 id 与主面板 key 相同、
+  `client.js` 内联副本与 `src/icon-state.ts` 的 parity。
 
-正确的进入方式：`docs/08-START-PROMPT.md` 贴进创造模式会话，按「阶段 0 + 阶段 1 + T-2-b」
-的顺序从 `T-0-b` 的测试开始写，而不是从 README 开始写。
+当前 **`audit: clean` 不等于**：
+
+1. **插件能用**。「能激活」刚在真机上第一次被证实（`473c3e1` 删掉 `inject: ['slots']`），
+   在此之前它一直是 `pending (waiting for service: slots)`，装上了也永远不出行。
+   这类事闸测不出来：闸跑在 vitest 里，vitest 里的 ctx 是这一仓自己捏的。
+2. **能显示额度**。`IconView` 的三行目前恒为形状 D（Host 没在跑）：host 侧没有真实数据源，
+   浏览器半拿到空视图就画 `—`。链路通了，账还是空的。
+3. **能防 429**。调度器在 `packages/core` 里成立，但没有任何一层把它接进真实请求路径——
+   本地代理（T-1-h）还没写。
+4. **D-01 的 `fold()` 合并分支**。`packages/core/src/metrics.ts` 里已有一条 rollup 时累加的分支，
+   夹具覆盖它需要「同一个上海日分两次 sweep 过期」，我在 `amd-metrics.test.ts` 上试过六轮、
+   全部算错 `floor`，最后放弃并在 commit 里写明**没有测**。它现在是被实现读着、而不是被测试守着的。
+
+读到 `audit: clean` 就以为「第一批交付了」，是这份文档里最容易发生的误读。它曾经发生在这里。
+
+### 6.1.1 一段通道史：为什么传输层换了三次
+
+T-2-b 要的是「左栏图标能显示池子状态」。这个「能」被三个不同的东西挡了三次，每次挡住时
+周边的测试**都是绿的**，因为每次都是 vitest 里那个假 ctx 比真 ctx 多给了一点东西：
+
+| 方案 | 在 vitest 里 | 在真 DSH 里 | 结果 |
+|---|---|---|---|
+| `globalThis[CHANNEL_KEY] = channel` | 绿（测试给两半同一个 global） | Host 写的是 Node 的 globalThis，页面读的是 Electron renderer 的 window | 两个进程各持一个全局，写得进去、读不到 |
+| `ctx.inject(['connection'], …)` + `connection.rpc.handle` | 绿（假 ctx 给了 `connection`） | `connection` 只在 DSH 自己的 client bundle 里 provide，profile 装的插件拿不到 | 注入永不回调，图标画 `—`，host 其实健康 |
+| `window.on 事件`（现方案） | 绿 | —— | 无鉴权，页内已有脚本可冒充 host；已在 docs/09 §6.1 与 channel.ts 头注释写明 |
+
+这三条记录下来的用处不是“看我们多曲折”，而是：**凡涉及 DSH 生命周期或跨半边界的假设，
+先去 `app.asar` 读实现再写**。前两次我都是照着参考包的形状抄的，形状抄对了，括号里的 API 不存在。
 
 ### 6.2 一个闸测不了的东西：来源标签恰不恰当
 

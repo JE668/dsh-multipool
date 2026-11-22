@@ -6,12 +6,20 @@
  * scheduler, not the proxy -- except a command, which is one of the two endpoints in here and
  * only runs when the page asks for it (T-2-e).
  *
- * The view reaches the page over `connection.rpc` (dsh-client-connection), not over a window
- * key. That key used to be the design: the host wrote a live object onto globalThis, and the
- * page read it. It could not work, because the two halves are two processes and globalThis is
- * one per process -- but the tests all passed, since a test hands both halves the same global.
- * An HTTP channel is what both processes can actually reach, and it brings the authentication
- * this file would otherwise have had to invent: `rpc.handle` admits, this module answers.
+ * The view reaches the page over two `window` events agreed on below, not over a window key.
+ *
+ * Two earlier designs were tried and both failed in the same place. A key failed because the two
+ * halves are two processes unrestrained by anything but hope: the host wrote, the page read
+ * nothing, and every test passed because a test hands both halves one global. `connection.rpc`
+ * (dsh-client-connection) then failed because the browser half provides that service only inside
+ * DSH's own client bundle, not to a plugin loaded from a profile -- no `connection` on the page,
+ * `ctx.inject(['connection'], ...)` never called back, and the icon drew dashes while the host it
+ * could not reach was running fine.
+ *
+ * What is left is the window both halves demonstrably share in DSH desktop, which is the
+ * renderer's. The cost is stated here rather than discovered later: a window event carries no
+ * authentication, so this is a same-process conversation, and any script already running on the
+ * page could answer in the host's place. Nothing in this file claims otherwise (docs/09).
  *
  * Three rules shape the code below.
  *
@@ -32,15 +40,28 @@
 import { buildSnapshot, PROVIDER_ORDER, serializeSnapshot, } from './vendor/core/index.js';
 import { iconViewOf } from './vendor/client-ui/index.js';
 /**
- * The RPC channel the page calls.
+ * The two window events the halves talk over.
  *
- * One segment, and no slash inside it: dsh-client-connection tests a host channel against
- * /^\/[A-Za-z0-9._~-]+$/ and refuses the rest, reserving `/api` for the gateway it owns itself.
- * Rejected channel names fail at registration, so this constant is the only place the name is
- * spelled -- an endpoint below only ever appends one segment to it.
+ * `page` is what the page dispatches and the host listens for; `host` is the answer, and it names
+ * the side that sends it rather than the side that receives it, so neither name has to be read
+ * from the other's point of view. Both are namespaced under `dsh-multipool:` because a window
+ * event bus is shared with every other plugin in the profile, and an unprefixed name is a
+ * collision waiting for the second plugin to be written.
+ *
+ * The payload rule is the same one the view itself follows (docs/03): what travels is JSON, never
+ * a function, a class instance, or a live handle. Each event names its endpoint (see
+ * ENDPOINT_SNAPSHOT and ENDPOINT_COMMAND), so a third endpoint is one more string here and one
+ * more branch in dispatch(), not a second event pair to keep in sync.
  */
-export const CHANNEL = '/multipool';
-/** The two endpoints `CHANNEL` serves; every other name is refused, see dispatch(). */
+export const BRIDGE_EVENT = 'dsh-multipool:bridge';
+export const BRIDGE_REPLY = 'dsh-multipool:bridge-reply';
+/**
+ * The endpoint names the page may ask for over BRIDGE_EVENT.
+ *
+ * These used to be RPC endpoint names under CHANNEL = '/multipool'. They keep their spelling so the
+ * two halves of this repo still speak one vocabulary, and they are now the only part of the
+ * request the host trusts before it has looked at the payload.
+ */
 export const ENDPOINT_SNAPSHOT = 'snapshot';
 export const ENDPOINT_COMMAND = 'command';
 /** The ref this plugin stores its one key under; the form's field is named after it. */
@@ -138,18 +159,21 @@ export function openChannel(options) {
         },
     };
 }
+/** The fields a bridge request carries. Anything else on the object is ignored, not merged. */
+const BRIDGE_CALL = 'callId';
+const BRIDGE_ENDPOINT = 'endpoint';
+const BRIDGE_PAYLOAD = 'payload';
 /**
- * The `connection.rpc.handle` callback: one JSON payload per endpoint name, one JSON answer.
+ * The endpoint table: one JSON payload per endpoint name, one JSON answer.
  *
- * `handler` is handed the endpoint the caller asked for and a payload that is already plain JSON.
- * Both endpoints answer in the shape the transport on the other side parses -- { ok, value } or
- * { ok: false, error } -- and neither answer may carry a function, a class instance, or a live
- * handle.
+ * `payload` arrives already parsed out of the event. Both endpoints answer in the envelope the
+ * page parses -- { ok, value } or { ok: false, error } -- and no answer may carry a function, a
+ * class instance, or a live handle (that is what KeyReading rather than KeyStatus is for below).
  *
- * An unknown endpoint is refused by name. The same argument as rule 3 above applies one level up:
- * the set of endpoints is the whole surface a page can reach, so it stays a list somebody reads.
+ * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
+ * surface a page can reach, so it stays a list somebody reads.
  */
-export function handleOf(handle) {
+export function answerOf(handle) {
     return async (endpoint, payload) => {
         if (endpoint === ENDPOINT_SNAPSHOT) {
             return { ok: true, value: handle.publish().view };
@@ -167,6 +191,78 @@ export function handleOf(handle) {
             ok: false,
             error: { code: 'multipool/unknown-endpoint', message: `no endpoint ${JSON.stringify(endpoint)}` },
         };
+    };
+}
+/**
+ * Reads one BRIDGE_EVENT detail, or nothing when this event is not ours.
+ *
+ * Kept apart from the listener so a test can hand it a plain object and never touch a window. A
+ * detail with no string callId or no string endpoint is not a malformed request to refuse -- it is
+ * somebody else's event, or a stray dispatch with no fields, and the ordinary answer to both is to
+ * not answer.
+ */
+export function readBridgeRequest(detail) {
+    if (detail === null || typeof detail !== 'object')
+        return undefined;
+    const fields = detail;
+    const callId = fields[BRIDGE_CALL];
+    const endpoint = fields[BRIDGE_ENDPOINT];
+    if (typeof callId !== 'string' || callId === '')
+        return undefined;
+    if (typeof endpoint !== 'string' || endpoint === '')
+        return undefined;
+    return { callId, endpoint, payload: fields[BRIDGE_PAYLOAD] };
+}
+/** globalThis, seen as the one thing a window event needs to be. */
+function globalBridge() {
+    return globalThis;
+}
+/**
+ * Wires BRIDGE_EVENT on `target` to `handle`, and sends each answer back on BRIDGE_REPLY.
+ *
+ * The two events are how the halves reach each other now. The page dispatches one; this process
+ * listens, answers, and dispatches the other with the caller's own callId, so two requests in
+ * flight cannot swap answers. `target` is `globalThis` in DSH, where host and page are the same
+ * Electron renderer -- which is also the whole reason there is no authentication here (docs/09).
+ *
+ * The returned disposer removes the listener, and is what makes a disable leave nothing behind on
+ * the bus: the same promise route registration made, now checkable without a web server.
+ */
+export function bridgeOf(handle, target = undefined) {
+    // The default is resolved here rather than in the parameter list: an explicit undefined --
+    // which is what options.target is when a host passes no window -- would wipe out a default.
+    const where = target === undefined ? globalBridge() : target;
+    const answer = answerOf(handle);
+    const onRequest = (event) => {
+        const request = readBridgeRequest(event !== null && typeof event === 'object'
+            ? event.detail
+            : undefined);
+        if (request === undefined)
+            return;
+        answer(request.endpoint, request.payload).then((reply) => {
+            const wire = reply.ok
+                ? { callId: request.callId, ok: true, value: reply.value }
+                : { callId: request.callId, ok: false, error: reply.error };
+            where.dispatchEvent({ type: BRIDGE_REPLY, detail: wire });
+        }, (thrown) => {
+            // An endpoint that threw still owes the caller an answer, or the page waits forever for a
+            // callId that will never come back. The message is the throw's own, not a rewrite of it.
+            where.dispatchEvent({
+                type: BRIDGE_REPLY,
+                detail: {
+                    callId: request.callId,
+                    ok: false,
+                    error: {
+                        code: 'multipool/endpoint-threw',
+                        message: thrown instanceof Error ? thrown.message : String(thrown),
+                    },
+                },
+            });
+        });
+    };
+    where.addEventListener(BRIDGE_EVENT, onRequest);
+    return () => {
+        where.removeEventListener(BRIDGE_EVENT, onRequest);
     };
 }
 //# sourceMappingURL=channel.js.map
