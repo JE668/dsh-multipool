@@ -227,7 +227,7 @@ window.__ModuleLoader__.load({
      * the same three dashes on screen. This asks again and keeps the reply, or the refusal, so
      * that one restart can tell the two apart. Delete it with the probe row that prints it.
      */
-    var NO_TRACE = 'not asked yet'
+    var NO_TRACE = 'render only / build 225e244'
 
     function traceOf() {
       if (bridgeOf() === undefined) return Promise.resolve('no window to ask on')
@@ -428,6 +428,9 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         var live = true
+        // Written synchronously, before any promise: whatever the bridge answers, the fact that
+        // this effect ran arrives first, and a rejected chain cannot swallow it.
+        setTrace('effect ran / build 225e244')
         traceOf().then(function (said) {
           if (live) setTrace(said)
         })
