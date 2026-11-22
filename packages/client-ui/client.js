@@ -225,7 +225,7 @@ window.__ModuleLoader__.load({
      * other answer, verbatim, in the panel's fourth row. TEMPORARY -- delete it, the row, and the
      * styles.note it borrows when the icon paints a real pool on a real install.
      */
-    var NO_TRACE = 'render only / build 7577904'
+    var NO_TRACE = 'render only / build b25d454'
 
     function traceOf() {
       if (typeof fetch !== 'function') return Promise.resolve('1 no fetch on this page')
