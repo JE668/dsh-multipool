@@ -6,20 +6,22 @@
  * scheduler, not the proxy -- except a command, which is one of the two endpoints in here and
  * only runs when the page asks for it (T-2-e).
  *
- * The view reaches the page over two `window` events agreed on below, not over a window key.
+ * The view reaches the page as an HTTP route under CHANNEL, served by this process's web server.
  *
- * Two earlier designs were tried and both failed in the same place. A key failed because the two
- * halves are two processes unrestrained by anything but hope: the host wrote, the page read
- * nothing, and every test passed because a test hands both halves one global. `connection.rpc`
- * (dsh-client-connection) then failed because the browser half provides that service only inside
- * DSH's own client bundle, not to a plugin loaded from a profile -- no `connection` on the page,
- * `ctx.inject(['connection'], ...)` never called back, and the icon drew dashes while the host it
- * could not reach was running fine.
+ * Three earlier designs were tried and all three failed in the same place: each assumed the two
+ * halves share something that an application process can only be lent. A window key assumed one
+ * global. `connection.rpc` assumed a service the browser half receives, and DSH provides that one
+ * only inside its own client bundle, not to a plugin a profile loads. Window events assumed one
+ * window -- and dispatchEvent did fire on the renderer's, into a bus this Node process was never
+ * subscribed to, so the page reported "6 dispatch returned ; no reply in 4000ms".
  *
- * What is left is the window both halves demonstrably share in DSH desktop, which is the
- * renderer's. The cost is stated here rather than discovered later: a window event carries no
- * authentication, so this is a same-process conversation, and any script already running on the
- * page could answer in the host's place. Nothing in this file claims otherwise (docs/09).
+ * An HTTP route assumes neither. The page asks for it the way DSH desktop's own shell asks for
+ * everything: dsh-app://app/<path> is handed by protocol.handle to forwardWebRequest, which
+ * reissues the request against this web server with the Host's own cookie attached, and only for
+ * the main frame's origin. The authentication is that cookie, checked by ctx.connection.admit
+ * before the route is reached, so this file authenticates nothing and stores nothing -- the same
+ * promise credentials.ts makes in its first rule. What it does not get is a push channel: a page
+ * asks, and the answer stands until the page asks again.
  *
  * Three rules shape the code below.
  *
@@ -41,33 +43,30 @@ import { type Account, type MetricsEvent, type ProviderId, type Snapshot, type U
 import { type IconView } from '@dsh-multipool/plugin-client';
 import type { KeyLayer } from './key-store.js';
 /**
- * The two window events the halves talk over.
+ * The path prefix the page asks under, and the two endpoints below it.
  *
- * `page` is what the page dispatches and the host listens for; `host` is the answer, and it names
- * the side that sends it rather than the side that receives it, so neither name has to be read
- * from the other's point of view. Both are namespaced under `dsh-multipool:` because a window
- * event bus is shared with every other plugin in the profile, and an unprefixed name is a
- * collision waiting for the second plugin to be written.
+ * One segment, no dots and no blanks, because it is also what the renderer spells in a URL and what
+ * a second plugin would have to avoid picking. The web server refuses a duplicate prefix outright,
+ * so the collision this name could cause is a startup error with a message, not a request answered
+ * by the wrong plugin.
  *
- * The payload rule is the same one the view itself follows (docs/03): what travels is JSON, never
- * a function, a class instance, or a live handle. Each event names its endpoint (see
- * ENDPOINT_SNAPSHOT and ENDPOINT_COMMAND), so a third endpoint is one more string here and one
- * more branch in dispatch(), not a second event pair to keep in sync.
+ * The payload rule is the one the view itself follows (docs/03): what travels is JSON, never a
+ * function, a class instance, or a live handle. Each endpoint names itself in the path (see
+ * ENDPOINT_SNAPSHOT and ENDPOINT_COMMAND), so a third endpoint is one more string here and one more
+ * branch in answerOf(), not a second event pair to keep in sync.
  */
-export declare const BRIDGE_EVENT = "dsh-multipool:bridge";
-export declare const BRIDGE_REPLY = "dsh-multipool:bridge-reply";
+export declare const CHANNEL = "/dsh-multipool";
 /**
- * The endpoint names the page may ask for over BRIDGE_EVENT.
+ * The endpoint names the page may ask for, one path segment under CHANNEL.
  *
- * These used to be RPC endpoint names under CHANNEL = '/multipool'. They keep their spelling so the
- * two halves of this repo still speak one vocabulary, and they are now the only part of the
- * request the host trusts before it has looked at the payload.
+ * These have kept their spelling across four transports, so the two halves of this repo still speak
+ * one vocabulary; and they are the only part of the request the host trusts before it has looked at
+ * the payload.
  */
 export declare const ENDPOINT_SNAPSHOT = "snapshot";
 export declare const ENDPOINT_COMMAND = "command";
 /**
- * What the browser half asks for. The page dispatches BRIDGE_EVENT with one of these and listens on
- * BRIDGE_REPLY for the matching callId.
+ * What the browser half asks for. A page POSTs to CHANNEL/<endpoint> and reads the answer as JSON.
  */
 export interface Channel {
     /** ENDPOINT_SNAPSHOT: the current view, as it stands, JSON on the wire. */
@@ -182,17 +181,18 @@ export declare function buildPublishedView(source: ChannelSource, budget: IconBu
  * what the two endpoints answer.
  */
 export declare function openChannel(options: OpenChannelOptions): ChannelHandle;
-/** The shape BRIDGE_REPLY sends back: the endpoint's answer, plus which call it answers. */
-export interface BridgeReply {
-    readonly callId: string;
-    readonly ok: boolean;
-    readonly value?: unknown;
-    readonly error?: {
-        readonly code: string;
-        readonly message: string;
-    };
-}
-/** One bridge call answered, before it is given a callId. The same envelope as BridgeReply. */
+/**
+ * The endpoint table: one JSON payload per endpoint name, one JSON answer.
+ *
+ * `payload` arrives already parsed out of a request body. Both endpoints answer in the envelope the
+ * page parses -- { ok, value } or { ok: false, error } -- and no answer may carry a function, a class
+ * instance, or a live handle (that is what KeyReading rather than KeyStatus is for below).
+ *
+ * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
+ * surface a page can reach, so it stays a list somebody reads.
+ */
+export declare function answerOf(handle: ChannelHandle): (endpoint: string, payload: unknown) => Promise<BridgeAnswer>;
+/** One endpoint answered, before it is given a status. The envelope answerOf returns. */
 export type BridgeAnswer = {
     readonly ok: true;
     readonly value: unknown;
@@ -204,55 +204,50 @@ export type BridgeAnswer = {
     };
 };
 /**
- * A minimal window: one listener to add, one event to dispatch-back, and nothing else.
+ * The part of a Node http request this route reads.
  *
- * Written out instead of taking the DOM's Window so a test can hand over a plain object and the
- * host half never needs a browser to typecheck. In DSH the real value is `globalThis`.
+ * Structural rather than node:http's IncomingMessage: the web server passes real ones, a test
+ * passes four lines, and this file then never depends on a transport's types to say what it uses.
  */
-export interface BridgeTarget {
-    addEventListener(type: string, listener: (event: unknown) => void): unknown;
-    removeEventListener(type: string, listener: (event: unknown) => void): unknown;
-    dispatchEvent(event: {
-        readonly type: string;
-        readonly detail?: unknown;
-    }): unknown;
-}
-/**
- * The endpoint table: one JSON payload per endpoint name, one JSON answer.
- *
- * `payload` arrives already parsed out of the event. Both endpoints answer in the envelope the
- * page parses -- { ok, value } or { ok: false, error } -- and no answer may carry a function, a
- * class instance, or a live handle (that is what KeyReading rather than KeyStatus is for below).
- *
- * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
- * surface a page can reach, so it stays a list somebody reads.
- */
-export declare function answerOf(handle: ChannelHandle): (endpoint: string, payload: unknown) => Promise<BridgeAnswer>;
-/** What a bridge request says, once its shape has been checked and nothing has been assumed. */
 export interface BridgeRequest {
-    readonly callId: string;
-    readonly endpoint: string;
-    readonly payload: unknown;
+    readonly method?: string | undefined;
+    readonly url?: string | undefined;
+    [Symbol.asyncIterator](): AsyncIterator<unknown>;
+}
+/** The part of a Node http response this route writes. */
+export interface BridgeResponse {
+    writeHead(status: number, headers?: Readonly<Record<string, string>>): unknown;
+    end(body?: string): unknown;
+}
+/** A Route's handler takes Node's request and response, which is the read and the write above. */
+export interface Route {
+    readonly kind: 'prefix';
+    readonly path: string;
+    readonly handler: (req: BridgeRequest, res: BridgeResponse) => unknown;
+}
+/** What a web server has to offer to be claimable here: one prefix, and that claim back. */
+export interface RouteServer {
+    register(route: Route): () => void;
 }
 /**
- * Reads one BRIDGE_EVENT detail, or nothing when this event is not ours.
+ * The web route: POSTs to the two endpoints, JSON in and JSON out.
  *
- * Kept apart from the listener so a test can hand it a plain object and never touch a window. A
- * detail with no string callId or no string endpoint is not a malformed request to refuse -- it is
- * somebody else's event, or a stray dispatch with no fields, and the ordinary answer to both is to
- * not answer.
+ * Only POST is answered. A GET is told the method exists and is elsewhere (Allow), rather than being
+ * handed a snapshot a link could have prefetched or a cache could have kept: both endpoints speak
+ * about this moment in the pool, and this moment has no address. The route is one prefix rather than
+ * two exact entries so a third endpoint is a string in this file and a branch in answerOf(), not a
+ * second registration somebody has to keep in step with the first.
+ *
+ * Nothing is read from the cookie here and nothing is set on it. `ctx.connection.admit` has already
+ * decided whether the caller reaches a route at all, before this handler is called.
  */
-export declare function readBridgeRequest(detail: unknown): BridgeRequest | undefined;
+export declare function routeOf(handle: ChannelHandle): Route;
 /**
- * Wires BRIDGE_EVENT on `target` to `handle`, and sends each answer back on BRIDGE_REPLY.
+ * Claims the route and returns the disposer, or a disposer with nothing claimed.
  *
- * The two events are how the halves reach each other now. The page dispatches one; this process
- * listens, answers, and dispatches the other with the caller's own callId, so two requests in
- * flight cannot swap answers. `target` is `globalThis` in DSH, where host and page are the same
- * Electron renderer -- which is also the whole reason there is no authentication here (docs/09).
- *
- * The returned disposer removes the listener, and is what makes a disable leave nothing behind on
- * the bus: the same promise route registration made, now checkable without a web server.
+ * No web server means no route and nothing thrown: the same shape bridgeOf took for a missing window.
+ * apply() has to return a disposer either way, and an entry that throws is an entry DSH removes from
+ * the page with only a console line left behind (docs/09 section 6.1).
  */
-export declare function bridgeOf(handle: ChannelHandle, target?: BridgeTarget | undefined): () => void;
+export declare function serveOn(server: RouteServer | undefined, handle: ChannelHandle): () => void;
 //# sourceMappingURL=channel.d.ts.map

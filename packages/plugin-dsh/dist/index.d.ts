@@ -29,7 +29,7 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
-import { type BridgeTarget } from './channel.js';
+import { type RouteServer } from './channel.js';
 import { type KeyStatus } from './credentials.js';
 import type { CredentialSeam } from './key-store.js';
 import { channelSourceFrom } from './source.js';
@@ -55,21 +55,30 @@ export interface HostOptions {
      */
     readonly acceptsWrites?: boolean;
     /**
-     * Where the bridge listens. Defaults to `globalThis`, which is the renderer's window in DSH.
+     * The web server to claim CHANNEL on. Defaults to the `webServer` service, which is where DSH puts
+     * it and where the page's dsh-app://app fetch already reaches.
      *
-     * A test has no window and should not be handed one: it passes a plain object here and dispatches
-     * on it. Same seam as the old ChannelTarget, one process simpler.
+     * A test has no web server and should not need one: it passes four lines here -- a register that
+     * keeps the route, and a disposer that drops it -- and then calls the route's handler with its own
+     * request and response.
      */
-    readonly target?: BridgeTarget;
+    readonly server?: RouteServer;
 }
+/**
+ * The service dsh-host-webserver registers. The namespaced package is the implementation; this is the
+ * only spelling a context answers a get() for.
+ */
+export declare const WEB_SERVER_SERVICE = "webServer";
 /**
  * What an injection hands back: whichever of the named services the context has.
  *
- * Only `credentials` is here now. The bridge stopped being a service when it moved to window events
- * -- a window is not something a context provides, so there was nothing left to inject for it.
+ * Two are here. `credentials` carries the key (T-2-e), and `webServer` carries the route the page
+ * reaches it by. Both are optional for the same reason: activate first, and say what is missing in
+ * the icon, never in a throw that removes the entry from the page.
  */
 interface InjectedServices {
     readonly credentials?: CredentialSeam;
+    readonly webServer?: RouteServer;
 }
 /** The channel's lifetime is the plugin's lifetime. */
 export declare function apply(ctx: {
@@ -79,5 +88,5 @@ export declare function apply(ctx: {
 export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyLayer, type KeyState, type KeyWrite } from './key-store.js';
-export { BRIDGE_EVENT, BRIDGE_REPLY, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, bridgeOf, buildPublishedView, openChannel, readBridgeRequest, type BridgeAnswer, type BridgeReply, type BridgeRequest, type BridgeTarget, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, } from './channel.js';
+export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, buildPublishedView, openChannel, routeOf, serveOn, type BridgeAnswer, type BridgeRequest, type BridgeResponse, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, type Route, type RouteServer, } from './channel.js';
 //# sourceMappingURL=index.d.ts.map

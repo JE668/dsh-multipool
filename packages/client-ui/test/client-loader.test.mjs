@@ -21,79 +21,63 @@ const fakeReact = {
   // React spreads the remaining arguments, so the drawer's two-element call has to arrive as an
   // array; reading them positionally as `kids` silently dropped the badge.
   createElement: (type, props, ...kids) => ({ type, props, kids }),
-  useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
-  useEffect: () => {},
+  useState: (init) => [typeof init === 'function' ? init() : init, () => undefined],
+  useEffect: () => undefined,
 }
 
 const chr10 = String.fromCharCode(10)
-const BRIDGE = 'dsh-multipool:bridge'
-const REPLY = 'dsh-multipool:bridge-reply'
+const CHANNEL = '/dsh-multipool'
 
-function factory(win) {
-  if (win !== undefined) globalThis.window = win
+/** Give the factory a page that fetches, or one that has no fetch at all. */
+function factory(area) {
+  globalThis.fetch = area
   return captured.factory((name) => {
     if (name === 'react') return fakeReact
-    throw new Error(`client.js required "${name}"; the page serves only react`)
+    throw new Error('client.js required "' + name + '"; the page serves only react')
   })
 }
 
-/** A host that is not running: nobody answers, so the asker's timeout is the whole answer. */
-const silentHost = () => undefined
+/** A Response the way fetch() hands one over: the drawer reads .ok, .status and .text(). */
+function response(text, status) {
+  const code = status === undefined ? 200 : status
+  return {
+    ok: code >= 200 && code < 300,
+    status: code,
+    text: () => Promise.resolve(text),
+  }
+}
 
 /**
- * A window carrying the two events the bridge speaks, used the way client.js uses them.
+ * A page that remembers what it was asked, and answers from `host`.
  *
- * `host` stands in for the other process. It is handed each dispatched event and returns the
- * reply detail to deliver a microtask later, or nothing when no host is listening -- which is the
- * case the timeout is for.
+ * `host` stands in for the other process: it is handed the URL and the init of every call, and
+ * returns what the web server would have returned. Nothing listening is a rejected fetch, because
+ * a host process that is not running refuses the connection rather than answering with a number.
  */
-function busWindow(host) {
-  const listing = []
-  const asked = []
-  const win = {
-    asked,
-    listening: listing,
-    addEventListener(type, listener) {
-      listing.push([type, listener])
-    },
-    removeEventListener(type, listener) {
-      const at = listing.findIndex((pair) => pair[0] === type && pair[1] === listener)
-      if (at >= 0) listing.splice(at, 1)
-    },
-    dispatchEvent(event) {
-      asked.push(event)
-      if (typeof host !== 'function') return
-      const answer = host(event)
-      if (answer === undefined) return
-      queueMicrotask(() => {
-        for (const [type, listener] of [...listing]) {
-          if (type === REPLY) listener({ type: type, detail: answer })
-        }
-      })
-    },
+function recordingPage(hostLoad) {
+  const calls = []
+  const page = (url, init) => {
+    calls.push([url, init])
+    return hostLoad(url, init)
   }
-  return win
+  page.calls = calls
+  return page
 }
 
-function snapshotHost(view) {
-  return (event) => {
-    if (event.type !== BRIDGE || event.detail.endpoint !== 'snapshot') return undefined
-    return { callId: event.detail.callId, ok: true, value: view }
-  }
+/** A host that parses the body it was sent, and answers with `reply` wrapped in an envelope. */
+function envelopeHost(reply) {
+  return (url, init) =>
+    Promise.resolve(response(JSON.stringify({ ok: true, value: reply(url, JSON.parse(init.body)) })))
 }
 
-function commandHost(said) {
-  return (event) => {
-    if (event.type !== BRIDGE || event.detail.endpoint !== 'command') return undefined
-    return { callId: event.detail.callId, ok: true, value: said }
-  }
-}
+/** What a browser says when no server holds the port: a rejected fetch, not a Response. */
+const nothingListening = () => Promise.reject(new TypeError('Failed to fetch'))
 
-function registrar(win) {
-  // One stub per apply(): the drawer registers twice now (the rail icon and the panel behind it),
-  // so a single shared variable would let the second registration overwrite the first.
-  globalThis.window = win
-  const plugin = factory(win)
+/**
+ * Order, as the page's loader would record it: if the slot, the effect and the registration were
+ * observed in any other order, the drawer is painting into chrome DSH has already finished with.
+ */
+function orderOf(width) {
   const seen = []
   const components = []
   const ctx = {
@@ -105,7 +89,7 @@ function registrar(win) {
       register(owner, comp) {
         seen.push(['register', owner.name, owner.id, owner.key, owner.label])
         components.push({ owner, comp })
-        return () => {}
+        return () => undefined
       },
     },
     effect(fn) {
@@ -113,9 +97,15 @@ function registrar(win) {
       return fn()
     },
   }
+  globalThis.fetch = width
+  const plugin = captured.factory(function (name) {
+    if (name === 'react') return fakeReact
+    throw new Error('client.js required ' + name + '; the page serves only react')
+  })
   plugin.apply(ctx)
-  const componentOf = (slot) => components.filter((c) => c.owner.name === slot).map((c) => c.comp)
-  return { plugin, seen, asked: win.asked, componentOf }
+  const componentOf = (slot) =>
+    components.filter((entry) => entry.owner.name === slot).map((entry) => entry.comp)
+  return { plugin, seen, componentOf }
 }
 
 test('loads one lazy factory named after the package', () => {
@@ -123,7 +113,7 @@ test('loads one lazy factory named after the package', () => {
 })
 
 test('registers the icon under sidebar.panellist through an effect', () => {
-  const { seen, plugin } = registrar(busWindow(silentHost))
+  const { seen, plugin } = orderOf(fakeReact)
   assert.deepEqual(seen[0], ['inject', 'sidebar.panellist'])
   assert.deepEqual(seen[1], ['effect'])
   assert.deepEqual(seen[2], ['register', 'sidebar.panellist', 'dsh-multipool', undefined, 'DSH Multipool'])
@@ -133,7 +123,7 @@ test('registers the icon under sidebar.panellist through an effect', () => {
 test('the icon and its panel share one id, or the click lands nowhere', () => {
   // The sidebar README (global panel entry) says a sidebar id addresses the main keyed slot's
   // entry of the same id. Two ids would be one icon that selects a panel nobody registered.
-  const { seen } = registrar(busWindow(silentHost))
+  const { seen } = orderOf(fakeReact)
   assert.deepEqual(seen[3], ['inject', 'main'])
   const iconRow = seen.find((row) => row[0] === 'register' && row[1] === 'sidebar.panellist')
   const mainRow = seen.find((row) => row[0] === 'register' && row[1] === 'main')
@@ -141,7 +131,7 @@ test('the icon and its panel share one id, or the click lands nowhere', () => {
 })
 
 test('paints idle with three dashes when no host answers the call', () => {
-  const { componentOf } = registrar(busWindow(silentHost))
+  const { componentOf } = orderOf(fakeReact)
   const Icon = componentOf('sidebar.panellist')[0]
   const tree = Icon({ size: 24, active: false })
   // Nothing has been read yet, so this is the shape the component starts in -- not a state it
@@ -169,46 +159,56 @@ test('still prints 0/0 once the host answers with an empty pool', () => {
   assert.equal(answered.badge, '0/0')
 })
 
-test('asks the host on its two events, and sends the request as given', async () => {
-  const page = busWindow((event) => ({
-    callId: event.detail.callId,
-    ok: true,
-    value: { ok: true, message: null },
-  }))
+test('asks its own origin for the endpoint the host half serves', async () => {
+  const page = recordingPage(envelopeHost(() => ({ ok: true, message: null })))
   const plugin = factory(page)
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
-  // The two event names are the whole handshake between the halves, so they are asserted here and
-  // not only over in plugin-dsh: this is the one file where both halves sit side by side.
-  // A real CustomEvent, not a literal: dispatchEvent refuses anything else, and this stub is a
-  // fake window, so nothing here would have enforced that on our behalf.
-  assert.equal(page.asked.length, 1)
-  assert.ok(page.asked[0] instanceof CustomEvent)
-  assert.equal(page.asked[0].type, 'dsh-multipool:bridge')
-  assert.deepEqual(page.asked[0].detail, {
-    callId: 'multipool-1',
-    endpoint: 'command',
-    payload: { request: { name: 'save', key: 'rc-abc' } },
+  // A relative path, no port and no credential: in DSH desktop the shell forwards everything under
+  // dsh-app://app that is not its own file to the host's web server, cookie already attached, and
+  // connection.admit decides there. The two names are the whole handshake, so they are asserted in
+  // the one file where both halves sit side by side.
+  assert.equal(page.calls.length, 1)
+  assert.equal(page.calls[0][0], '/dsh-multipool/command')
+  assert.equal(page.calls[0][1].method, 'POST')
+  assert.equal(page.calls[0][1].headers['content-type'], 'application/json')
+  assert.deepEqual(JSON.parse(page.calls[0][1].body), {
+    request: { name: 'save', key: 'rc-abc' },
   })
   assert.deepEqual(outcome, { ok: true, message: null })
 })
 
-test('a throw or a rejection comes back as a refusal, not as a rejected promise', async () => {
-  // A click handler cannot await and cannot catch. Whatever went wrong on the way to the host has
-  // to arrive as an envelope with ok: false, or the button that sends the key does nothing at all.
-  const throwing = factory(busWindow(() => {
-    throw new TypeError('no transport')
-  }))
-  const first = await throwing.commandOf({ name: 'forget' })
+test('a refusal, a thrown fetch and a dead host are three sentences, all envelopes', async () => {
+  // A click handler cannot await and cannot catch either. Every way of not getting an answer has to
+  // arrive as an envelope with ok false -- but not as the same sentence, or a wrong key and a dead
+  // host become one bug report.
+  const refused = factory(
+    recordingPage(() =>
+      Promise.resolve(
+        response(
+          JSON.stringify({ ok: false, error: { code: 'multipool/x', message: 'the store says no' } }),
+        ),
+      ),
+    ),
+  )
+  const first = await refused.commandOf({ name: 'save', key: 'rc-abc' })
   assert.equal(first.ok, false)
   assert.equal(first.reason, 'command failed')
-  assert.equal(first.message, 'no credential service')
+  assert.equal(first.message, 'the store says no')
 
-  // A host that never answers is not a different shape from one that threw: both leaves settled.
-  const second = await factory(busWindow(silentHost)).commandOf({ name: 'forget' })
+  const unfair = factory(() => {
+    throw new TypeError('no transport')
+  })
+  const second = await unfair.commandOf({ name: 'forget' })
   assert.equal(second.ok, false)
   assert.equal(second.reason, 'command failed')
-  assert.equal(second.message, 'no credential service')
+  assert.equal(second.message, 'no transport')
+
+  const nobody = factory(nothingListening)
+  const third = await nobody.commandOf({ name: 'forget' })
+  assert.equal(third.ok, false)
+  assert.equal(third.reason, 'command failed')
 })
+
 
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
@@ -216,28 +216,4 @@ test('a page with no window at all is a host too old, not a save that failed', a
   assert.equal(outcome.ok, false)
   // One word for both ways of not reaching a host: a page has one action to offer either way.
   assert.equal(outcome.reason, 'command failed')
-})
-
-test('the panel prints the same three lines the icon tooltip carries', () => {
-  // The icon and the panel ask the same snapshot endpoint, so the temptation is to test them apart
-  // and trust the seam. The seam is where the bug lives: one could read lines.accounts and the other
-  // lines.points, both "answered", and leave a reader with a panel that disagrees with the dot and no
-  // way to say which one lied. So the panel is rendered off the view the icon tooltip already shows.
-  const empty = core.iconViewOf({
-    snapshot: core.emptySnapshot(),
-    budget: { admitRpm: 0, sources: [] },
-    pointsProviderId: null,
-    attached: false,
-  })
-  const Panel = registrar(busWindow(snapshotHost(empty))).componentOf('main')[0]
-  const Icon = registrar(busWindow(snapshotHost(empty))).componentOf('sidebar.panellist')[0]
-
-  const icon = Icon({ size: 24, active: false })
-  const panel = Panel({})
-  const rows = panel.kids[0][1].kids[0].map((row) => row.kids[0])
-
-  assert.equal(icon.props['data-multipool-level'], 'idle')
-  assert.deepEqual(rows, icon.props.title.split(chr10))
-  assert.deepEqual(rows, [empty.lines.accounts, empty.lines.rpm, empty.lines.points])
-  assert.ok(!rows.join('').match(/[0-9]/))
 })

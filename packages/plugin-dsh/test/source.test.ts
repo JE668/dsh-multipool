@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildSnapshot, createFakeClock, PROVIDER_ORDER, type Account } from '@dsh-multipool/core'
 import { channelSourceFrom, NOTHING_READ } from '../src/source.js'
-import { apply, BRIDGE_EVENT, BRIDGE_REPLY, ENDPOINT_SNAPSHOT } from '../src/index.js'
-import type { ChannelSource } from '../src/channel.js'
+import { apply, CHANNEL, ENDPOINT_SNAPSHOT } from '../src/index.js'
+import type { ChannelSource, Route, RouteServer } from '../src/channel.js'
 
 /** The four methods key-store.ts calls on a credential seam, and nothing else. */
 interface FakeSeam {
@@ -86,27 +86,8 @@ describe('the host half publishes what it has read, and nothing it has not', () 
     expect(Object.keys(source.usage())).toEqual([])
   })
 
-  it('apply() puts a listener on the window and close() takes it off', async () => {
-    const effects: Array<() => void> = []
-    const listening = new Map<string, Array<(event: unknown) => void>>()
-    const delivered: unknown[] = []
-    const win = {
-      addEventListener(type: string, listener: (event: unknown) => void) {
-        const found = listening.get(type)
-        if (found === undefined) listening.set(type, [listener])
-        else found.push(listener)
-      },
-      removeEventListener(type: string, listener: (event: unknown) => void) {
-        const found = listening.get(type)
-        if (found === undefined) return
-        const at = found.indexOf(listener)
-        if (at >= 0) found.splice(at, 1)
-        if (found.length === 0) listening.delete(type)
-      },
-      dispatchEvent(event: { readonly type: string; readonly detail?: unknown }) {
-        delivered.push(event.detail)
-      },
-    }
+  it('apply() claims one route and close() gives it back', async () => {
+    const claimed = new Map<string, Route>()
     const seamLike: FakeSeam = {
       resolve: async () => undefined,
       describe: async () => ({ configured: false, writable: true }),
@@ -114,6 +95,15 @@ describe('the host half publishes what it has read, and nothing it has not', () 
       unset: async () => undefined,
     }
     const injected: string[][] = []
+    const effects: Array<() => void> = []
+    const server: RouteServer = {
+      register(route: Route) {
+        claimed.set(route.path, route)
+        return () => {
+          claimed.delete(route.path)
+        }
+      },
+    }
     const ctx = {
       effect(callback: () => () => void) {
         const dispose = callback()
@@ -127,15 +117,39 @@ describe('the host half publishes what it has read, and nothing it has not', () 
       },
     }
     const clock = createFakeClock({ now: NOW })
-    apply(ctx, { nowMs: () => clock.now(), target: win })
-    // A window needs no provider: the initial arm asks the context for nothing at all.
+    apply(ctx, { nowMs: () => clock.now(), server })
+    // A route needs no provider: the server is handed in, and nothing is injected for it.
     expect(injected).toEqual([])
-    // Only the credentials seam is asked for, and only because acceptsWrites hands out the
-    // write half -- there is no connection service left to inject (T-2-e).
-    expect(listening.has(BRIDGE_EVENT)).toBe(true)
+    expect(claimed.has(CHANNEL)).toBe(true)
 
-    win.dispatchEvent({ type: BRIDGE_EVENT, detail: { callId: 'c1', endpoint: ENDPOINT_SNAPSHOT } })
-    for (let turn = 0; turn < 50 && delivered.length === 0; turn += 1) await Promise.resolve()
-    expect(delivered).toHaveLength(1)
+
+    const route = claimed.get(CHANNEL)
+    expect(route !== undefined).toBe(true)
+    const asked: Array<{ status: number; body: string }> = []
+    const req = {
+      method: 'POST',
+      url: CHANNEL + '/' + ENDPOINT_SNAPSHOT,
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from('{}')
+      },
+    }
+    const res = {
+      writeHead(status: number) {
+        asked.push({ status, body: '' })
+      },
+      end(body?: string) {
+        const last = asked[asked.length - 1]
+        if (last !== undefined) last.body = body ?? ''
+      },
+    }
+    await route?.handler(req, res)
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.status).toBe(200)
+    const answered = JSON.parse(asked[0]?.body ?? '{}') as { ok: boolean; value: { attached: boolean } }
+    expect(answered.ok).toBe(true)
+    expect(answered.value.attached).toBe(true)
+
+    for (const dispose of effects) dispose()
+    expect(claimed.has(CHANNEL)).toBe(false)
   })
 })

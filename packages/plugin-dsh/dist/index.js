@@ -30,7 +30,7 @@
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
 import { createSystemClock } from './vendor/core/index.js';
-import { AMD_KEY_REF_NAME, bridgeOf, openChannel, COMMAND_NO_WRITES, } from './channel.js';
+import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
 export const VERSION = '0.0.2-rc.4';
@@ -61,10 +61,15 @@ const writesFor = (seam) => ({
     forget: () => clearKeyStatus({ credentials: seam }, AMD_KEY_REF_NAME).then(outcomeOf),
 });
 /**
+ * The service dsh-host-webserver registers. The namespaced package is the implementation; this is the
+ * only spelling a context answers a get() for.
+ */
+export const WEB_SERVER_SERVICE = 'webServer';
+/**
  * ctx.inject, or a no-op when the context predates the mixin.
  *
- * apply()'s one remaining injection goes through here, so "this DSH has no inject" stays one branch
- * instead of two, and a context that cannot inject is still a context the icon activates on.
+ * Both of apply()'s injections go through here, so "this DSH has no inject" stays one branch instead of
+ * two, and a context that cannot inject is still a context the icon activates on.
  */
 function injectOf(ctx, names, callback) {
     const inject = ctx.inject;
@@ -98,13 +103,25 @@ export function apply(ctx, options = {}) {
         const budget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES };
         const channel = openChannel({ source, budget });
         const drops = [];
-        // The bridge comes first because it is the only thing that makes the icon reachable at all: an
+        // The route comes first because it is the only thing that makes the icon reachable at all: an
         // opened channel nobody can ask is a handle dropped on the floor.
         //
-        // No injection, and nothing to wait for: window events live on the window this process already
-        // has. The previous route did wait, on a `connection` service that DSH provides only to its own
-        // client bundle, so the callback never came and the icon dashed while the host was healthy.
-        drops.push(bridgeOf(channel, options.target));
+        // The web server is the one thing the page and this process both already have -- the page reaches
+        // it through dsh-app://app, this process serves it -- so it is asked for, and an install without
+        // one gets the dashed icon rather than a throw. The two designs before this one assumed something
+        // shared and had to guess; this one asks.
+        const server = options.server;
+        if (server === undefined) {
+            drops.push(injectOf(ctx, [WEB_SERVER_SERVICE], child => {
+                const webServer = child.webServer;
+                if (webServer === undefined)
+                    return;
+                drops.push(serveOn(webServer, channel));
+            }));
+        }
+        else {
+            drops.push(serveOn(server, channel));
+        }
         // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
         // the page's listener table, which is what the comment above "no inject" promises in practice.
         const onKeyStatus = options.onKeyStatus;
@@ -132,5 +149,5 @@ export function apply(ctx, options = {}) {
 export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
-export { BRIDGE_EVENT, BRIDGE_REPLY, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, bridgeOf, buildPublishedView, openChannel, readBridgeRequest, } from './channel.js';
+export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
 //# sourceMappingURL=index.js.map

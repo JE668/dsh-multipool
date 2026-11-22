@@ -33,14 +33,15 @@
 import { createSystemClock } from '@dsh-multipool/core'
 import {
   AMD_KEY_REF_NAME,
-  bridgeOf,
   openChannel,
+  serveOn,
+  CHANNEL,
   type ChannelSource,
   type ChannelWrites,
   type CommandOutcome,
   COMMAND_NO_WRITES,
   type IconBudget,
-  type BridgeTarget,
+  type RouteServer,
 } from './channel.js'
 import {
   CREDENTIALS_SERVICE,
@@ -78,12 +79,14 @@ export interface HostOptions {
    */
   readonly acceptsWrites?: boolean
   /**
-   * Where the bridge listens. Defaults to `globalThis`, which is the renderer's window in DSH.
+   * The web server to claim CHANNEL on. Defaults to the `webServer` service, which is where DSH puts
+   * it and where the page's dsh-app://app fetch already reaches.
    *
-   * A test has no window and should not be handed one: it passes a plain object here and dispatches
-   * on it. Same seam as the old ChannelTarget, one process simpler.
+   * A test has no web server and should not need one: it passes four lines here -- a register that
+   * keeps the route, and a disposer that drops it -- and then calls the route's handler with its own
+   * request and response.
    */
-  readonly target?: BridgeTarget
+  readonly server?: RouteServer
 }
 
 /** The store's answer, turned into what the page's command() hands back. */
@@ -113,20 +116,28 @@ const writesFor = (seam: CredentialSeam): ChannelWrites => ({
 
 
 /**
+ * The service dsh-host-webserver registers. The namespaced package is the implementation; this is the
+ * only spelling a context answers a get() for.
+ */
+export const WEB_SERVER_SERVICE = 'webServer'
+
+/**
  * What an injection hands back: whichever of the named services the context has.
  *
- * Only `credentials` is here now. The bridge stopped being a service when it moved to window events
- * -- a window is not something a context provides, so there was nothing left to inject for it.
+ * Two are here. `credentials` carries the key (T-2-e), and `webServer` carries the route the page
+ * reaches it by. Both are optional for the same reason: activate first, and say what is missing in
+ * the icon, never in a throw that removes the entry from the page.
  */
 interface InjectedServices {
   readonly credentials?: CredentialSeam
+  readonly webServer?: RouteServer
 }
 
 /**
  * ctx.inject, or a no-op when the context predates the mixin.
  *
- * apply()'s one remaining injection goes through here, so "this DSH has no inject" stays one branch
- * instead of two, and a context that cannot inject is still a context the icon activates on.
+ * Both of apply()'s injections go through here, so "this DSH has no inject" stays one branch instead of
+ * two, and a context that cannot inject is still a context the icon activates on.
  */
 function injectOf(
   ctx: { inject?(names: string[], callback: (child: InjectedServices) => void): () => void },
@@ -169,13 +180,23 @@ export function apply(
     const budget: IconBudget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES }
     const channel = openChannel({ source, budget })
     const drops: Array<() => void> = []
-    // The bridge comes first because it is the only thing that makes the icon reachable at all: an
+    // The route comes first because it is the only thing that makes the icon reachable at all: an
     // opened channel nobody can ask is a handle dropped on the floor.
     //
-    // No injection, and nothing to wait for: window events live on the window this process already
-    // has. The previous route did wait, on a `connection` service that DSH provides only to its own
-    // client bundle, so the callback never came and the icon dashed while the host was healthy.
-    drops.push(bridgeOf(channel, options.target))
+    // The web server is the one thing the page and this process both already have -- the page reaches
+    // it through dsh-app://app, this process serves it -- so it is asked for, and an install without
+    // one gets the dashed icon rather than a throw. The two designs before this one assumed something
+    // shared and had to guess; this one asks.
+    const server = options.server
+    if (server === undefined) {
+      drops.push(injectOf(ctx, [WEB_SERVER_SERVICE], child => {
+        const webServer = child.webServer
+        if (webServer === undefined) return
+        drops.push(serveOn(webServer, channel))
+      }))
+    } else {
+      drops.push(serveOn(server, channel))
+    }
     // Off unless somebody reads the answer: an enabled plugin with no form open must not show up in
     // the page's listener table, which is what the comment above "no inject" promises in practice.
     const onKeyStatus = options.onKeyStatus
@@ -214,23 +235,23 @@ export {
 export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyLayer, type KeyState, type KeyWrite } from './key-store.js'
 
 export {
-  BRIDGE_EVENT,
-  BRIDGE_REPLY,
+  CHANNEL,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
   answerOf,
-  bridgeOf,
   buildPublishedView,
   openChannel,
-  readBridgeRequest,
+  routeOf,
+  serveOn,
   type BridgeAnswer,
-  type BridgeReply,
   type BridgeRequest,
-  type BridgeTarget,
+  type BridgeResponse,
   type Channel,
   type ChannelHandle,
   type ChannelSource,
   type IconBudget,
   type OpenChannelOptions,
   type PublishedView,
+  type Route,
+  type RouteServer,
 } from './channel.js'

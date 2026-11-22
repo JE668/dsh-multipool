@@ -11,19 +11,22 @@
  * spelled out instead of imported, and icon-state.test.ts holds the two copies to one answer over
  * a shared table of snapshots.
  *
- * The host half runs in a different process. Two designs for the seam between them are gone: a
- * window key, which the halves do not share because globalThis is one per process (the tests passed
- * by handing both halves the same global), and the connection service, which DSH provides inside its
- * own client bundle and therefore hands to none of the plugins a profile loads. What both processes
- * do have is the renderer's window, so the request is an event on it:
+ * The host half runs in a different process. Three designs for the seam between them are gone:
+ * a window key, which the halves do not share because globalThis is one per process (the tests
+ * passed by handing both halves the same global); window events, which the page did dispatch and
+ * the host never heard because they are two very different windows; and connection.rpc, which DSH
+ * provides inside its own client bundle and therefore hands to none of the plugins a profile
+ * loads. What is left is the thing this page is actually served over: the host's web server.
  *
- *   dispatch  BRIDGE_EVENT  { callId, endpoint: 'snapshot', payload }  -> { ok: true, value: IconView }
- *   dispatch  BRIDGE_EVENT  { callId, endpoint: 'command',  payload: { request } }
- *                        -> { ok: true, value: CommandOutcome }
+ *   POST  /dsh-multipool/snapshot  {}                 -> { ok: true, value: IconView }
+ *   POST  /dsh-multipool/command   { request }       -> { ok: true, value: CommandOutcome }
  *
- * The call is the request. There is no subscribe: the icon asks when it paints, and the panel asks
- * when it is opened, which is the only moment either answer is looked at. A host that is not
- * running never dispatches a reply, the callId never comes back, and the timeout is the dash.
+ * A relative path is the whole trick. In DSH desktop this page is served from dsh-app://app, and
+ * every fetch it makes that is not one of the shell's own files is handed by protocol.handle to
+ * forwardWebRequest -- which reissues it against the host's web server with the Host's cookie
+ * attached, and only from this origin. So the request below names no port and sets no credential:
+ * it asks its own origin, the shell forwards, and connection.admit decides. A page with no host
+ * answers 404 or not at all, and both land on the same three dashes.
  *
  * Until a snapshot arrives the icon paints the empty pool: idle, --/--, three dashes. That is the
  * right answer for a fresh install, and for a host that is not running it is the only answer we
@@ -140,180 +143,146 @@ window.__ModuleLoader__.load({
     // the call was answered -- and the store's words inside, so it passes through untouched.
     var NO_WRITES = 'no credential service'
 
-    // Host and page are two processes, but in DSH desktop they share one renderer, and the
-    // window is the object both of them can reach. The channel used to be `connection.rpc`, which
-    // the page provides only to DSH's own client bundle -- a plugin loaded from a profile got
-    // nothing and drew dashes over a host that was running. Two events need no provider.
-    //
-    // What that trades away: a window event carries no authentication. Any script already on
-    // the page could answer in the host's place. Nothing below treats an answer as proof of
-    // anything; it is printed, and the printing is where it is checked (docs/09).
-    var BRIDGE_EVENT = 'dsh-multipool:bridge'
-    var BRIDGE_REPLY = 'dsh-multipool:bridge-reply'
+    // The page asks over HTTP, because HTTP is the one thing both processes are already speaking.
+    // What this trades away: there is no push. A page asks-path -> gets a snapshot -> that snapshot
+    // stands for ever, or until the page asks again. Nothing on the host side pushes when it changes.
+    var CHANNEL = '/dsh-multipool'
     var CALL_TIMEOUT_MS = 4000
 
-    /** The window the bridge speaks on, or undefined where there is none. */
-    function bridgeOf() {
-      if (typeof window === 'undefined') return undefined
-      if (window === null) return undefined
-      if (typeof window.addEventListener !== 'function') return undefined
-      if (typeof window.dispatchEvent !== 'function') return undefined
-      return window
-    }
-
     /**
-     * The question, as the bus wants it: a real Event, not an object shaped like one.
+     * One endpoint, asked over HTTP and answered as JSON.
      *
-     * dispatchEvent is specified to refuse anything that is not an Event, and a browser enforces
-     * it -- our window stub did not, so the bridge looked wired while every single call refused on
-     * arrival with "parameter 1 is not of type 'Event'". CustomEvent is where `detail` lives at all;
-     * Event has no such member. The detail is a fresh object so a listener cannot rewrite the ask.
-     */
-    function askOf(callId, endpoint, payload) {
-      return new CustomEvent(BRIDGE_EVENT, {
-        detail: { callId: callId, endpoint: endpoint, payload: payload },
-      })
-    }
-
-    var callCount = 0
-
-    /**
-     * One endpoint, asked on the window and answered on the window.
+     * A relative path, so the origin is whatever served this page: in DSH desktop that is
+     * dsh-app://app, whose protocol handler forwards everything that is not a shell file to the
+     * host's web server with the host's cookie already attached (docs/09 section 6.1.1). This file
+     * names no port and sets no credential, and if it ever had to, it would be wrong -- the port
+     * is the host's, chosen at listen time, and the cookie is not ours to read.
      *
-     * The callId keeps two asks apart: both halves share one bus, so a reply is matched to its
-     * own request rather than to whatever came back first. The promise rejects -- never resolves
-     * undefined -- when there is no window, when nothing answered in time, or when the answer was
-     * a refusal, so callers keep just two branches: the host said no, or no host was listening.
+     * The promise rejects, never resolves undefined, on: no fetch to call with, no answer inside
+     * CALL_TIMEOUT_MS, an answer that is not ok, an answer that is not JSON, or an answer that is JSON
+     * but not an envelope. Callers keep two branches -- the host said no, or the host was not heard
+     * from -- and both of them arrive here as the second.
      */
     function request(endpoint, payload) {
-      var bridge = bridgeOf()
-      if (bridge === undefined) return Promise.reject(new Error(NO_WRITES))
-      callCount += 1
-      var callId = 'multipool-' + String(callCount)
-      return new Promise(function (keep, fail) {
-        var settled = false
-        var timer = null
-        function answer(event) {
-          if (settled) return
-          var detail = event === null || event === undefined ? undefined : event.detail
-          if (detail === null || detail === undefined || typeof detail !== 'object') return
-          if (detail.callId !== callId) return
-          settled = true
-          clearTimeout(timer)
-          bridge.removeEventListener(BRIDGE_REPLY, answer)
-          if (detail.ok === true) {
-            keep(detail.value)
-            return
+      if (typeof fetch !== 'function') return Promise.reject(new Error(NO_WRITES))
+      var url = CHANNEL + '/' + endpoint
+      var cancel = typeof AbortController === 'function' ? new AbortController() : undefined
+      var timer =
+        cancel === undefined
+          ? undefined
+          : setTimeout(function () {
+            cancel.abort()
+          }, CALL_TIMEOUT_MS)
+      function stop() {
+        if (timer !== undefined) clearTimeout(timer)
+      }
+      var sent
+      try {
+        sent = fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload === undefined ? {} : payload),
+          credentials: 'same-origin',
+          signal: cancel === undefined ? undefined : cancel.signal,
+        })
+      } catch (thrown) {
+        // fetch() rejects for a host that is not running, and throws only for a call it could not
+        // make at all. Both are 'no answer', and the chain below only knows how to continue one.
+        stop()
+        return Promise.reject(thrown)
+      }
+      return sent
+        .then(
+          function (response) {
+            if (response.ok === true) return response.text()
+            throw new Error('HTTP ' + String(response.status))
+          },
+          function (thrown) {
+            throw new Error(thrown instanceof Error ? thrown.message : String(thrown))
+          },
+        )
+        .then(function (text) {
+          stop()
+          var answer
+          try {
+            answer = JSON.parse(text)
+          } catch {
+            throw new Error(NO_WRITES)
           }
-          var said = detail.error === null || detail.error === undefined ? undefined : detail.error.message
-          fail(new Error(said === undefined ? NO_WRITES : String(said)))
-        }
-        timer = setTimeout(function () {
-          if (settled) return
-          settled = true
-          bridge.removeEventListener(BRIDGE_REPLY, answer)
-          fail(new Error(NO_WRITES))
-        }, CALL_TIMEOUT_MS)
-        bridge.addEventListener(BRIDGE_REPLY, answer)
-        bridge.dispatchEvent(askOf(callId, endpoint, payload))
-      })
+          if (answer === null || typeof answer !== 'object') throw new Error(NO_WRITES)
+          if (answer.ok === true) return answer.value
+          var said = answer.error === null || answer.error === undefined ? undefined : answer.error.message
+          throw new Error(said === undefined ? NO_WRITES : String(said))
+        })
     }
 
     /**
-     * TEMPORARY (T-2-b): what the bridge said, in its own words.
+     * What the wire said, in its own words.
      *
-     * viewOf() has one failure answer -- the empty pool -- because the icon must paint
-     * something. That makes 'the listener is not attached' and 'the host answered nothing'
-     * the same three dashes on screen. This asks again and keeps the reply, or the refusal, so
-     * that one restart can tell the two apart. Delete it with the probe row that prints it.
+     * viewOf() has one failure answer -- the empty pool -- because the icon must paint something.
+     * That makes 'nobody answered' and 'somebody refused' the same three dashes on screen: a
+     * distinction the screen cannot show and a support session cannot ask for. This carries the
+     * other answer, verbatim, in the panel's fourth row. TEMPORARY -- delete it, the row, and the
+     * styles.note it borrows when the icon paints a real pool on a real install.
      */
-
-    var NO_TRACE = 'render only / build 225e244'
-    var traceStep = NO_TRACE
+    var NO_TRACE = 'render only / build 2e5c1a7'
 
     function traceOf() {
-      // Reports the step it reached instead of the answer it wanted, because the answer is what
-      // never arrived. A promise chain cannot say "I stopped between two and three"; a module-level
-      // string that each step overwrites can, and whatever the screen shows is the last step reached.
-      if (bridgeOf() === undefined) {
-        traceStep = '1 no window'
-        return Promise.resolve(traceStep)
-      }
-      callCount += 1
-      var callId = 'multipool-' + String(callCount)
-      return new Promise(function (settle) {
-        traceStep = '3 listener installed'
-        var timer = setTimeout(function () {
-          settle(traceStep + ' ; no reply in ' + String(CALL_TIMEOUT_MS) + 'ms')
-        }, CALL_TIMEOUT_MS)
-        function answer(event) {
-          var detail = event === null || event === undefined ? undefined : event.detail
-          var mine =
-            detail !== null && detail !== undefined && typeof detail === 'object'
-              ? 'detail ' + String(detail.callId) + ' ok ' + String(detail.ok)
-              : 'no detail'
-          traceStep = '4 heard ' + mine
-          settle(traceStep)
-          clearTimeout(timer)
-        }
-        window.addEventListener(BRIDGE_REPLY, answer)
-        traceStep = '5 dispatched'
-        window.dispatchEvent(askOf(callId, ENDPOINT_SNAPSHOT, {}))
-        traceStep = '6 dispatch returned'
-      })
+      if (typeof fetch !== 'function') return Promise.resolve('1 no fetch on this page')
+      var url = CHANNEL + '/' + ENDPOINT_SNAPSHOT
+      return Promise.resolve()
+        .then(function () {
+          return fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{}',
+            credentials: 'same-origin',
+          })
+        })
+        .then(
+          function (response) {
+            return response.text().then(function (text) {
+              return (
+                '2 answered HTTP ' +
+                String(response.status) +
+                ' in ' +
+                String(text.length) +
+                ' chars: ' +
+                text.slice(0, 120)
+              )
+            })
+          },
+          function (thrown) {
+            return '2 refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
+          },
+        )
     }
 
     /**
-     * The one command the page sends, and what it hands back.
+     * request(), with the reason kept -- the shape the two callers below actually want.
      *
-     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
-     * anything", and both of them are undefined-shaped at this line: the caller's next step is
-     * the same either way, so the difference is carried by the probe row, not by a second field.
+     * The reason is the only thing that tells a refusal apart from a silence, so it is not dropped
+     * here; it travels as ok:false, which is the same envelope the host sends when it says no. The
+     * sentence is the host's or the transport's, unchanged: rewriting 'the store says no' into 'no
+     * credential service' would report a different bug than the one happening.
      */
     function ask(endpoint, payload) {
       return request(endpoint, payload).then(
-        function (answer) {
-          return answer
+        function (value) {
+          return value
         },
         function (thrown) {
-          // No host, no answer, no story to tell.
-          return undefined
+          return failed(thrown)
         },
       )
     }
 
+    /** The envelope a refusal travels in, so a caller can tell one from a silence. */
     function failed(thrown) {
       return {
         ok: false,
         reason: COMMAND_FAILED,
-        message: thrown instanceof Error ? thrown.message : String(thrown),
-      }
-    }
-
-    /**
-     * The one command the page sends, and what it hands back.
-     *
-     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
-     * anything", and both of them are undefined-shaped at this line: the caller's next step is
-     * the same either way, so the difference is carried by the probe row, not by a second field.
-     */
-    function ask(endpoint, payload) {
-      return request(endpoint, payload).then(
-        function (answer) {
-          return answer
-        },
-        function (thrown) {
-          // No host, no answer, no story to tell.
-          return undefined
-        },
-      )
-    }
-
-    function failed(thrown) {
-      return {
-        ok: false,
-        reason: COMMAND_FAILED,
-        message: thrown instanceof Error ? thrown.message : String(thrown),
+        message: thrown === null || thrown === undefined ? NO_WRITES : String(thrown.message === undefined ? thrown : thrown.message),
       }
     }
 
@@ -325,31 +294,19 @@ window.__ModuleLoader__.load({
       })
     }
 
-    /**
-     * The one command the page sends, and what it hands back.
-     *
-     * `ask` keeps one branch for "the host said no" and one for "the host was not there to say
-     * anything", and both of them are undefined-shaped at this line: the caller's next step is
-     * the same either way, so the difference is carried by the probe row, not by a second field.
-     */
-    function ask(endpoint, payload) {
-      return request(endpoint, payload).then(
-        function (answer) {
-          return answer
+    /** The view the icon and the panel both paint, asked for once per render. */
+    function viewOf() {
+      return ask(ENDPOINT_SNAPSHOT, {}).then(
+        function (view) {
+          if (view === undefined || view === null) return emptyView()
+          return view
         },
-        function (thrown) {
-          // No host, no answer, no story to tell.
-          return undefined
+        function () {
+          // No host, no answer, no story to tell: the icon's own empty pool already says "nothing
+          // read yet", and a reason string here would only be a second place to keep it in sync.
+          return emptyView()
         },
       )
-    }
-
-    function failed(thrown) {
-      return {
-        ok: false,
-        reason: COMMAND_FAILED,
-        message: thrown instanceof Error ? thrown.message : String(thrown),
-      }
     }
 
     var COMMAND_FAILED = 'command failed'
@@ -359,28 +316,6 @@ window.__ModuleLoader__.load({
       red: '--dsw-alias-state-error-primary',
       grey: '--dsw-alias-state-idle-primary',
       idle: '--dsw-alias-state-idle-primary',
-    }
-
-    /** Send the one command the page has, and hand back what the host says about it. */
-    function commandOf(request) {
-      return ask(ENDPOINT_COMMAND, { request: request }).then(function (outcome) {
-        if (outcome === undefined || outcome === null) return failed(new Error(NO_WRITES))
-        return outcome
-      })
-    }
-
-    /** The icon view the host is answering with right now, or the empty pool if it is not. */
-    function viewOf() {
-      return ask(ENDPOINT_SNAPSHOT, {}).then(
-        function (view) {
-          return view === undefined || view === null ? emptyView() : view
-        },
-        function () {
-          // No host, no answer, no story to tell: the icon's own empty pool already says "nothing
-          // read yet", and a reason string here would only be a second place to keep it in sync.
-          return emptyView()
-        },
-      )
     }
 
     function levelColor(level) {
