@@ -369,20 +369,45 @@ window.__ModuleLoader__.load({
      * one string on purpose: a browser tooltip that needs to be hovered line by line is not a
      * fallback you can read at a glance.
      */
+    /**
+     * viewOf(), asked again on a timer until told to stop.
+     *
+     * The reading lives in the host process: it is produced by whatever wrote the key, and nothing
+     * carries a change back across the boundary -- an HTTP route answers, it does not call. So a view
+     * fetched once is the state at that instant, for ever, which is how the rail came to paint "not
+     * read" while the pool behind it already held a key.
+     *
+     * The interval is the page's own rendering clock, not a budget: it reaches our own web server and nothing
+     * upstream, so it does not count against rpmAccount, rpmKey or the sixty-second window in docs/04
+     * section 2. If that ever stops being true, this is the line that is wrong.
+     */
+    var VIEW_REFRESH_MS = 5000
+
+    function follow(keep) {
+      var live = true
+      var tick = function () {
+        if (!live) return
+        viewOf().then(function (next) {
+          if (live) keep(next)
+        })
+      }
+      tick()
+      var timer = setInterval(tick, VIEW_REFRESH_MS)
+      return function () {
+        live = false
+        clearInterval(timer)
+      }
+    }
     function SidebarIcon(props) {
       const pair = React.useState(emptyView)
       const view = pair[0]
       const setView = pair[1]
 
+      // Kept current rather than fetched once: the host half owns the reading, and this row has no
+      // way of knowing when it changed. follow() also guards the unmounted case, so a late answer
+      // that arrives after the row is gone does not set state on a dead tree.
       React.useEffect(function () {
-        var live = true
-        viewOf().then(function (next) {
-          // A row that unmounted before the answer came back must not set state on a gone tree.
-          if (live) setView(next)
-        })
-        return function () {
-          live = false
-        }
+        return follow(setView)
       }, [])
 
       const small = props.size <= 16
@@ -478,12 +503,12 @@ window.__ModuleLoader__.load({
         traceOf().then(function (said) {
           if (live) setTrace(said)
         })
-        viewOf().then(function (next) {
-          // A row that unmounted before the answer came back must not set state on a gone tree.
-          if (live) setView(next)
-        })
+        // Same timer as the rail icon, so the panel and the badge cannot disagree about the pool
+        // while both are on screen: one question, one interval, two paintings of the answer.
+        var stopFollowing = follow(setView)
         return function () {
           live = false
+          stopFollowing()
         }
       }, [])
 
