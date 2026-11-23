@@ -44,9 +44,24 @@ window.__ModuleLoader__.load({
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
 
-    function iconLevelOf(overall, configured, attached) {
+    // The third word: whether the host has counted the pool at all.
+    // 'unread' and 'empty' are not the same claim, and 0/0 must not stand for both.
+    function accountsUnread() {
+      return '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE
+    }
+    function notReadYet() {
+      return '\u6ca1\u8bfb\u8fc7\u8d26\u53f7\u6c60'
+    }
+    function hostUnreachable() {
+      return 'host ' + '\u672a\u8fd0\u884c'
+    }
+
+    function iconLevelOf(overall, configured, attached, reading) {
       var heard = attached === undefined ? true : attached
-      if (!configured || overall.total === 0) return heard ? 'grey' : 'idle'
+      if (!heard) return 'idle'
+      // Nobody has looked: 'unread' is not an empty pool, and must not borrow its colour.
+      if (reading === 'unread') return 'idle'
+      if (!configured || overall.total === 0) return 'grey'
       if (overall.available === 0) return 'red'
       if (overall.available < overall.total) return 'yellow'
       return 'green'
@@ -66,8 +81,8 @@ window.__ModuleLoader__.load({
       var source = budget.sources[0]
       return '\u5168\u5c40 RPM ' + String(budget.admitRpm) + '\uff08' + (source === undefined ? NO_VALUE : source) + '\uff09'
     }
-    function rpmLineUnattached() {
-      return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08host \u672a\u8fd0\u884c\uff09'
+    function rpmLineUnattached(reason) {
+      return '\u5168\u5c40 RPM ' + NO_VALUE + '\uff08' + reason + '\uff09'
     }
     function pointsLine(provider, fetchedAtLabel) {
       var used = provider.dailyUsedPts === undefined ? undefined : provider.dailyUsedPts.value
@@ -84,7 +99,8 @@ window.__ModuleLoader__.load({
     function iconViewOf(input) {
       var snapshot = input.snapshot
       var attached = input.attached === undefined ? true : input.attached
-      var counts = { available: snapshot.overall.available, total: snapshot.overall.total }
+      var reading = input.reading === undefined ? 'unread' : input.reading
+      var counts = { available: snapshot.overall.available, total: snapshot.overall.total, reading: reading }
       var pointsProvider = input.pointsProviderId === null
         ? undefined
         : snapshot.providers.find(function (p) {
@@ -93,17 +109,20 @@ window.__ModuleLoader__.load({
       var points = pointsProvider === undefined || pointsProvider === null
         ? '\u4eca\u65e5 pts ' + NO_VALUE
         : pointsLine(pointsProvider, input.pointsFetchedAtLabel === undefined ? null : input.pointsFetchedAtLabel)
-      var level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached)
+      var level = iconLevelOf(snapshot.overall, snapshot.overall.configured, attached, reading)
+      var unread = reading === 'unread'
       var lines = {
-        accounts: attached ? accountsLine(snapshot) : '\u53ef\u7528\u8d26\u53f7 ' + NO_VALUE + '/' + NO_VALUE,
-        rpm: attached ? rpmLine(input.budget) : rpmLineUnattached(),
-        points: attached ? points : '\u4eca\u65e5 pts ' + NO_VALUE,
+        accounts: !attached || unread ? accountsUnread() : accountsLine(snapshot),
+        rpm: attached && !unread ? rpmLine(input.budget) : rpmLineUnattached(unread ? notReadYet() : hostUnreachable()),
+        points: !attached || unread ? '\u4eca\u65e5 pts ' + NO_VALUE : points,
       }
       return {
         level: level,
         counts: counts,
         attached: attached,
-        badge: attached ? String(counts.available) + '/' + String(counts.total) : NO_VALUE + '/' + NO_VALUE,
+        // A host that answered "I have not looked" has a badge in the same sense a switched-off
+        // drawer does: the digits exist, and none of them were asked for.
+        badge: !attached || unread ? NO_VALUE + '/' + NO_VALUE : String(counts.available) + '/' + String(counts.total),
         lines: lines,
       }
     }

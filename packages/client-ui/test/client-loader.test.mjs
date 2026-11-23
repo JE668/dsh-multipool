@@ -142,7 +142,7 @@ test('paints idle with three dashes when no host answers the call', () => {
   assert.equal(lines.length, 3)
   assert.ok(lines[0].includes('\u2014/\u2014'))
   assert.ok(!lines[0].includes('0/0'))
-  assert.ok(lines[1].includes('host'))
+  assert.ok(lines[1].includes('\u8d26\u53f7\u6c60'))
   // And it is not a badge at all: an unheard host is not an empty pool, so there is no fraction.
   const badge = tree.kids[1]
   assert.equal(badge.props.style.background, 'transparent')

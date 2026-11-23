@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { iconLevelOf } from './icon-state.js'
+import { type IconViewInput, iconLevelOf, iconViewOf } from './icon-state.js'
+import { emptySnapshot } from '@dsh-multipool/core'
 
 const drawerPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'client.js')
 
@@ -85,7 +86,73 @@ describe('client.js carries the same arithmetic as icon-state.ts', () => {
     expect(view.level).toBe('idle')
     expect(view.attached).toBe(false)
     expect(view.lines.points).not.toMatch(/[0-9]/)
-    expect(view.lines.rpm).toContain('host')
+    expect(view.lines.rpm).toContain('账号池')
+  })
+
+  /**
+   * The lines are where the two copies actually diverge, and the level test above cannot see it.
+   *
+   * 'unread' only changes the badge and the wording; the counts stay whatever the snapshot holds.
+   * A copy that never learned the third word still returns a correct level for POOL_EMPTY and still
+   * prints '0/0' -- so it passes that test and tells the user, in a tooltip, that their pool has been
+   * counted and holds nothing. Every field is compared here for that reason, not just the level.
+   */
+  it('agrees on what to paint when the pool was never read', () => {
+    const input: IconViewInput = {
+      snapshot: emptySnapshot(),
+      budget: { admitRpm: 0, sources: [] },
+      pointsProviderId: null,
+      reading: 'unread',
+    }
+    const typed = iconViewOf(input)
+    const drawn = drawer.iconViewOf(input)
+    expect(drawn).toEqual(typed)
+    expect(drawn.badge).toBe('\u2014/\u2014')
+    expect(drawn.level).toBe('idle')
+    expect(drawn.counts.reading).toBe('unread')
+  })
+
+  it('agrees that a host which answered with no keys is zero of zero', () => {
+    const input: IconViewInput = {
+      snapshot: emptySnapshot(),
+      budget: { admitRpm: 11, sources: ['min(20,30)*0.85/1.5=11'] },
+      pointsProviderId: null,
+      reading: 'empty',
+    }
+    expect(drawer.iconViewOf(input)).toEqual(iconViewOf(input))
+    expect(drawer.iconViewOf(input).badge).toBe('0/0')
+  })
+
+  it('prints no digits anywhere when the pool was never read', () => {
+    const drawn = drawer.iconViewOf({
+      snapshot: emptySnapshot(),
+      budget: { admitRpm: 0, sources: [] },
+      pointsProviderId: null,
+      reading: 'unread',
+    })
+    const text = drawn.badge + drawn.lines.accounts + drawn.lines.rpm + drawn.lines.points
+    expect(text).not.toMatch(/[0-9]/)
+    // emptyView() is the drawer's pre-answer placeholder: unattached as well as unread. That is a
+    // third state, not this one, so it is compared with the drawer's own empty input rather than
+    // with a view whose host did answer the question.
+    const placeholder = drawer.emptyView()
+    const empty = drawer.iconViewOf({
+      snapshot: emptySnapshot(),
+      budget: { admitRpm: 0, sources: [] },
+      pointsProviderId: null,
+      attached: false,
+      reading: 'unread',
+    })
+    expect(placeholder).toEqual(empty)
+  })
+
+  it('takes the absent reading as unread, not as zero', () => {
+    const absent: IconViewInput = {
+      snapshot: emptySnapshot(),
+      budget: { admitRpm: 0, sources: [] },
+      pointsProviderId: null,
+    }
+    expect(drawer.iconViewOf(absent)).toEqual(iconViewOf(absent))
   })
 
   it('registers into the two slots layout pairs by one id', () => {
