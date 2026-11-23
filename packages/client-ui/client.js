@@ -321,12 +321,15 @@ window.__ModuleLoader__.load({
           // { view, reading }: the reading travels beside the numbers, because a 0/0 the host
           // never counted and a 0/0 it counted are the same five characters on screen.
           if (answer === undefined || answer === null || answer.view === undefined) return emptyView()
-          return iconViewOf({ snapshot: answer.view, attached: true, reading: answer.reading })
-        },
-        function () {
-          // No host, no answer, no story to tell: the icon's own empty pool already says "nothing
-          // read yet", and a reason string here would only be a second place to keep it in sync.
-          return emptyView()
+          // Paint what the host computed; do not compute it again. view is already an IconView --
+          // level, counts, badge and lines -- and re-deriving one here needs a Snapshot, which this
+          // is not:
+          //
+          //     iconViewOf({ snapshot: answer.view })   // answer.view.overall === undefined
+          //
+          // That threw, ask() caught the throw as a refusal, and viewOf() painted the refusal as the
+          // placeholder -- so every real answer showed as three dashes while the wire was green.
+          return answer.view
         },
       )
     }
@@ -578,6 +581,9 @@ window.__ModuleLoader__.load({
       // loader asks the factory for `inject`/`apply`. Without it the page's copy of commandOf()
       // would be the one function in this file no test ever calls.
       commandOf: commandOf,
+      // Same reason as commandOf, one layer down: viewOf() is where the host's answer turns into what
+      // the rail paints, so a wrong turn there is invisible on a page that has no host yet.
+      viewOf: viewOf,
       apply(ctx) {
         // The icon and the panel are one feature, not two: sidebar's README, the "global panel entry" section,
         // says a sidebar id addresses the main keyed slot's entry of that same id, and layout

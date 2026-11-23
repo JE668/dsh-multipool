@@ -211,6 +211,27 @@ test('a refusal, a thrown fetch and a dead host are three sentences, all envelop
 })
 
 
+test('paints what the host computed instead of computing it again', () => {
+  // The host's answer is { view, reading } where view is already an IconView. An earlier version
+  // handed that IconView to iconViewOf() as a Snapshot, which reads snapshot.overall.available --
+  // so it threw, ask() turned the throw into a refusal envelope, and the rail painted the
+  // placeholder for ever while the wire was saying green. Only a host that answers with a real
+  // reading can catch that: every other test in this file stops before the wrapper is read.
+  const answered = {
+    level: 'green',
+    counts: { available: 1, total: 1, reading: 'read' },
+    badge: '1/1',
+    attached: true,
+    lines: { accounts: 'a', rpm: 'r', points: 'p' },
+  }
+  const page = recordingPage(envelopeHost(() => ({ view: answered, reading: 'read' })))
+  const plugin = factory(page)
+  return plugin.viewOf().then((view) => {
+    assert.equal(view.level, 'green')
+    assert.equal(view.badge, '1/1')
+    assert.deepEqual(view.lines, answered.lines)
+  })
+})
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
