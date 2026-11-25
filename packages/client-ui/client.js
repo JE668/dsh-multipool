@@ -183,7 +183,7 @@ window.__ModuleLoader__.load({
       forget: '\u5fd8\u6389\u8fd9\u628a\u94a5\u5319',
       forgetting: '\u6b63\u5728\u5fd8\u8bb0',
       test: '\u6d4b\u8bd5\u8fde\u63a5',
-      testing: '\u6b63\u5728\u8bf7\u95ee\u4e0a\u6e38',
+      testing: '\u6b63\u5728\u8bf7\u6c42\u4e0a\u6e38',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
       stored: '\u5df2\u5b58\u5728\u672c\u673a',
       inLayer: '\uff08',
@@ -193,7 +193,7 @@ window.__ModuleLoader__.load({
       inEnv: '\u73af\u5883\u53d8\u91cf',
       inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf',
       inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf',
-      note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u5934\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
+      note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u6267\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
     }
 
     /**
@@ -504,7 +504,7 @@ window.__ModuleLoader__.load({
           type: 'password',
           value: key.draft,
           placeholder: SETTINGS.placeholder,
-          'aria-label': SETTINGS.label,
+          'aria-label': SETTINGS.title,
           autoComplete: 'off',
           spellCheck: false,
           disabled: busy,
