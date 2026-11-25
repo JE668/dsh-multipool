@@ -20,6 +20,13 @@
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core'
 import type { ChannelSource } from './channel.js'
 import type { KeyLayer } from './key-store.js'
+import type { UsageAttempt } from './usage.js'
+
+/** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
+export interface SourceHooks {
+  readonly readFromSeam?: () => Promise<boolean>
+  readonly testUsage?: (providerId: ProviderId) => Promise<UsageAttempt>
+}
 
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
@@ -28,6 +35,14 @@ export interface SourceFacts {
   readonly usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined
   readonly activeSessions: number | undefined
   readonly queued: number | undefined
+  /**
+   * The credential seam itself, when one is armed (T-2-f).
+   *
+   * Handed along so the page can ask it to make one request -- the usage read -- without the key
+   * leaving the process that already holds it. Absent on an install with no provider, which is the
+   * same absence the icon paints.
+   */
+  readonly seam?: unknown
   /**
    * Which layer answered when the key was last read, or absent when nobody has read it.
    *
@@ -61,13 +76,24 @@ export const NOTHING_READ: SourceFacts = {
  * badge as 0/0 -- the same glyph as a pool that was read and found empty. The third answer has to be
  * carried alongside the list, not deduced from it.
  */
-export function channelSourceFrom(facts: SourceFacts, nowMs: () => number): ChannelSource {
+export function channelSourceFrom(
+  facts: SourceFacts,
+  nowMs: () => number,
+  hooks?: SourceHooks,
+): ChannelSource {
   return {
     accounts: () => facts.accounts ?? [],
     events: () => facts.events ?? [],
     // A provider with no reading is absent from the object, not present as null: null is how a
     // caller would spell "I know there is no usage endpoint here", which is a claim, not silence.
     usage: () => facts.usage ?? {},
+    // The seam, when somebody still holds it: the page's test button reads through this rather than
+    // through a copy of the key, because there is no copy of the key.
+    // The write/read hooks the plugin's apply() owns: a re-read of the seam, and the one request
+    // that leaves this process. Neither is derivable from `facts` (source.ts rule 1), so both are
+    // spliced in when their owner supplies them and absent otherwise.
+    ...(hooks?.readFromSeam === undefined ? {} : { readFromSeam: hooks.readFromSeam }),
+    ...(hooks?.testUsage === undefined ? {} : { testUsage: hooks.testUsage }),
     activeSessions: () => facts.activeSessions ?? 0,
     queued: () => facts.queued ?? 0,
     nowMs,

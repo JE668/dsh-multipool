@@ -37,13 +37,20 @@ export const NOTHING_READ = {
  * badge as 0/0 -- the same glyph as a pool that was read and found empty. The third answer has to be
  * carried alongside the list, not deduced from it.
  */
-export function channelSourceFrom(facts, nowMs) {
+export function channelSourceFrom(facts, nowMs, hooks) {
     return {
         accounts: () => facts.accounts ?? [],
         events: () => facts.events ?? [],
         // A provider with no reading is absent from the object, not present as null: null is how a
         // caller would spell "I know there is no usage endpoint here", which is a claim, not silence.
         usage: () => facts.usage ?? {},
+        // The seam, when somebody still holds it: the page's test button reads through this rather than
+        // through a copy of the key, because there is no copy of the key.
+        // The write/read hooks the plugin's apply() owns: a re-read of the seam, and the one request
+        // that leaves this process. Neither is derivable from `facts` (source.ts rule 1), so both are
+        // spliced in when their owner supplies them and absent otherwise.
+        ...(hooks?.readFromSeam === undefined ? {} : { readFromSeam: hooks.readFromSeam }),
+        ...(hooks?.testUsage === undefined ? {} : { testUsage: hooks.testUsage }),
         activeSessions: () => facts.activeSessions ?? 0,
         queued: () => facts.queued ?? 0,
         nowMs,

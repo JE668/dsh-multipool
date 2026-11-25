@@ -30,7 +30,7 @@
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
 
-import { createSystemClock, type Account } from '@dsh-multipool/core'
+import { createSystemClock, type Account, type ProviderId, type UsageResult } from '@dsh-multipool/core'
 import {
   AMD_KEY_REF_NAME,
   openChannel,
@@ -54,7 +54,8 @@ import {
   type KeyWriteOutcome,
 } from './credentials.js'
 import type { CredentialSeam, KeyState } from './key-store.js'
-import { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js'
+import { NOTHING_READ, channelSourceFrom, type SourceFacts, type SourceHooks } from './source.js'
+import { readAmdUsage, withProviderUsage, type UsageAttempt } from './usage.js'
 
 export const VERSION = '0.0.2-rc.4'
 
@@ -240,6 +241,68 @@ export function reportKeyInto(
   return watchKeyStatus(context, apply)
 }
 
+/**
+ * Ask the seam for the key right now, and write the answer where the next paint will find it (T-2-f).
+ *
+ * The page's settings section used to open with "no one has read this yet" and no way to stop being
+ * that. This is that way, and it is the same three lines reportKeyInto() uses once the seam hands
+ * its first answer: from the state, or undefined when the state is not an answer about the pool.
+ *
+ * Returns false for every answer that is not a reading. A form that printed "empty" over a refused
+ * seam would be describing the store's health as the user's pool, which is the mistake U-06 names
+ * one level up.
+ */
+async function readSeamNow(
+  seam: CredentialSeam | undefined,
+  facts: MutableFacts,
+  onRead?: (status: KeyStatus) => void,
+): Promise<boolean> {
+  if (seam === undefined) return false
+  const status = await readKeyStatus({ credentials: seam })
+  if (status.kind !== 'read') return false
+  const accounts = accountFrom(status.state)
+  if (accounts === undefined) return false
+  facts.accounts = accounts
+  facts.keyLayer = status.state.kind === 'configured' ? status.state.layer : undefined
+  if (onRead !== undefined) onRead(status)
+  return true
+}
+
+/**
+ * One upstream reading, on the user's say-so (T-2-f).
+ *
+ * The floor is per provider and checked here rather than in usage.ts so the caller that remembers
+ * the last attempt is the only thing that has to change: a form pressing twice in a second gets
+ * `tooSoon` back and no request, which is what keeps a button from being an accidental poller.
+ *
+ * The reading goes into `facts.usage` only when one came back. A failed attempt leaves the map
+ * exactly as it was: the old number is still what the account said, and its own `usageFetchedAt`
+ * says how old it is. Overwriting it with an error would blank a true number into a blank page.
+ */
+async function askUsage(
+  providerId: ProviderId,
+  seam: CredentialSeam | undefined,
+  nowMs: () => number,
+  lastAttemptMs: () => number | undefined,
+  stamp: (atMs: number) => void,
+  facts?: MutableFacts,
+): Promise<UsageAttempt> {
+  const attempt = await readAmdUsage({
+    providerId,
+    seam,
+    nowMs: nowMs(),
+    ...(lastAttemptMs() === undefined ? {} : { lastAttemptMs: lastAttemptMs() as number }),
+    ...(facts?.usage?.[providerId] === undefined ? {} : { previous: facts.usage[providerId] as UsageResult }),
+  })
+  if (!attempt.tooSoon) stamp(attempt.atMs)
+  if (facts !== undefined && attempt.usage !== null) {
+    // A reading replaces this provider's entry; a failure keeps whatever was there (withProviderUsage
+    // deletes on null, so a first-ever failure leaves the map without the key rather than with a zero).
+    facts.usage = withProviderUsage(facts.usage, providerId, attempt.usage)
+  }
+  return attempt
+}
+
 /** The channel's lifetime is the plugin's lifetime. */
 export function apply(
   ctx: {
@@ -254,7 +317,27 @@ export function apply(
     // zero -- and only a read that came back may change it, because `reading()` is derived from
     // `accounts` being undefined here and nowhere else.
     const facts: MutableFacts = { ...(options.facts ?? NOTHING_READ) }
-    const source: ChannelSource = channelSourceFrom(facts, nowMs)
+    // Both hooks read the current `seam` and `lastAttemptMs` when they are called, so they see a
+    // service injected after this line. Whether they are *offered* is decided per request in
+    // channel.ts: an install with no provider has no `readFromSeam` key at all, which is that
+    // module's refusal, rather than a wrapper that is present and throws.
+    let seam: CredentialSeam | undefined
+    let lastAttemptMs: number | undefined
+    const hooks: SourceHooks = {
+      readFromSeam: () => readSeamNow(seam, facts, onKeyStatus),
+      testUsage: (providerId: ProviderId) =>
+        askUsage(
+          providerId,
+          seam,
+          nowMs,
+          () => lastAttemptMs,
+          stamp => {
+            lastAttemptMs = stamp
+          },
+          facts,
+        ),
+    }
+    const source: ChannelSource = channelSourceFrom(facts, nowMs, hooks)
     const budget: IconBudget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES }
     const channel = openChannel({ source, budget })
     const drops: Array<() => void> = []
@@ -276,8 +359,12 @@ export function apply(
     // icon painted 0/0: a confident number about a pool nobody had looked .A reason to
     // paint is a reason to read, and the icon always has one.
     const onKeyStatus = options.onKeyStatus
+    // The seam is assigned here and read by `hooks` at request time, so the route above and this
+    // service need no ordering between them.
     drops.push(injectOf(ctx, [CREDENTIALS_SERVICE], child => {
-      const seam = child.credentials
+      // The seam arrives here, possibly long after the route was claimed: `hooks` reads this
+      // variable when it is called, so it sees whatever this line last assigned.
+      seam = child.credentials
       // No seam at all stays indistinguishable from one that has not answered yet, and both read as
       // 'unread' downstream. That is deliberate: "I could not tell" is not "there are none".
       if (seam === undefined) return

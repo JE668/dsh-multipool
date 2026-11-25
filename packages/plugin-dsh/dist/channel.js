@@ -39,7 +39,7 @@
  * KeyReading and not the KeyStatus it was built from. A test that shares the same process cannot
  * notice the difference, so the shape is narrow on purpose.
  */
-import { buildSnapshot, PROVIDER_ORDER, serializeSnapshot, } from './vendor/core/index.js';
+import { buildSnapshot, PROVIDER_ORDER, serializeSnapshot, PROVIDER_BASE_URLS, USAGE_POLL_FLOOR_MS, parseUsageResponse, scrubSecrets, } from './vendor/core/index.js';
 import { iconViewOf } from './vendor/client-ui/index.js';
 /**
  * The path prefix the page asks under, and the two endpoints below it.
@@ -64,6 +64,18 @@ export const CHANNEL = '/dsh-multipool';
  */
 export const ENDPOINT_SNAPSHOT = 'snapshot';
 export const ENDPOINT_COMMAND = 'command';
+/**
+ * Not an endpoint this repo's own page calls: the third is where a *prompt* would go, so the name is
+ * taken here to mean "ask the upstream once, on purpose" and documented as such.
+ */
+export const ENDPOINT_TEST = 'test';
+/**
+ * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
+ * which today is the only provider with a usage endpoint.
+ */
+export const TEST_PROVIDER = 'providerId';
+/** Refused because this host was built without anything that can reach an upstream. */
+export const NO_TEST_SOURCE = 'multipool/no-upstream';
 /** The ref this plugin stores its one key under; the form's field is named after it. */
 export const AMD_KEY_REF_NAME = 'AMD_API_KEY';
 /** Refused because the name is not one of the two; nothing was attempted. */
@@ -181,7 +193,7 @@ export function openChannel(options) {
  * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
  * surface a page can reach, so it stays a list somebody reads.
  */
-export function answerOf(handle) {
+export function answerOf(handle, source) {
     return async (endpoint, payload) => {
         if (endpoint === ENDPOINT_SNAPSHOT) {
             const built = handle.publish();
@@ -200,6 +212,22 @@ export function answerOf(handle) {
                 ? payload.request
                 : undefined;
             return { ok: true, value: await handle.command(request) };
+        }
+        if (endpoint === ENDPOINT_TEST && source !== undefined && source.testUsage !== undefined) {
+            // The one endpoint that leaves this process and comes back with somebody else's words. The
+            // words are spoken by the seam's holder, so this branch only decides which question to put to
+            // it -- a provider id, or the one this channel prints numbers for.
+            const asked = payload !== null && typeof payload === 'object'
+                ? payload[TEST_PROVIDER]
+                : undefined;
+            const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd';
+            return { ok: true, value: await source.testUsage(providerId) };
+        }
+        if (endpoint === ENDPOINT_TEST) {
+            return {
+                ok: false,
+                error: { code: NO_TEST_SOURCE, message: 'this host cannot ask an upstream anything' },
+            };
         }
         return {
             ok: false,
@@ -248,8 +276,11 @@ async function readBody(req) {
  * Nothing is read from the cookie here and nothing is set on it. `ctx.connection.admit` has already
  * decided whether the caller reaches a route at all, before this handler is called.
  */
-export function routeOf(handle) {
-    const answer = answerOf(handle);
+export function routeOf(handle, source) {
+    // The source is optional and only the test endpoint reads it: every other answer is built from
+    // the handle. Passing it here rather than growing a second route keeps "the endpoints the page
+    // can reach" a list in one function.
+    const answer = answerOf(handle, source);
     return {
         kind: 'prefix',
         path: CHANNEL,
@@ -333,9 +364,9 @@ function endpointFrom(url) {
  * apply() has to return a disposer either way, and an entry that throws is an entry DSH removes from
  * the page with only a console line left behind (docs/09 section 6.1).
  */
-export function serveOn(server, handle) {
+export function serveOn(server, handle, source) {
     if (server === undefined)
         return () => undefined;
-    return server.register(routeOf(handle));
+    return server.register(routeOf(handle, source));
 }
 //# sourceMappingURL=channel.js.map

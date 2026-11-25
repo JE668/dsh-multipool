@@ -19,6 +19,12 @@
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
 import type { ChannelSource } from './channel.js';
 import type { KeyLayer } from './key-store.js';
+import type { UsageAttempt } from './usage.js';
+/** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
+export interface SourceHooks {
+    readonly readFromSeam?: () => Promise<boolean>;
+    readonly testUsage?: (providerId: ProviderId) => Promise<UsageAttempt>;
+}
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
     readonly accounts: readonly Account[] | undefined;
@@ -26,6 +32,14 @@ export interface SourceFacts {
     readonly usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined;
     readonly activeSessions: number | undefined;
     readonly queued: number | undefined;
+    /**
+     * The credential seam itself, when one is armed (T-2-f).
+     *
+     * Handed along so the page can ask it to make one request -- the usage read -- without the key
+     * leaving the process that already holds it. Absent on an install with no provider, which is the
+     * same absence the icon paints.
+     */
+    readonly seam?: unknown;
     /**
      * Which layer answered when the key was last read, or absent when nobody has read it.
      *
@@ -50,7 +64,7 @@ export declare const NOTHING_READ: SourceFacts;
  * badge as 0/0 -- the same glyph as a pool that was read and found empty. The third answer has to be
  * carried alongside the list, not deduced from it.
  */
-export declare function channelSourceFrom(facts: SourceFacts, nowMs: () => number): ChannelSource;
+export declare function channelSourceFrom(facts: SourceFacts, nowMs: () => number, hooks?: SourceHooks): ChannelSource;
 /**
  * Which layer last answered, or nothing at all when nobody has asked yet.
  *

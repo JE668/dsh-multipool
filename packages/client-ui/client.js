@@ -172,6 +172,8 @@ window.__ModuleLoader__.load({
     /** The rail and the panel went over HTTP; the key goes over the same route. */
     var SAVE = 'save'
     var FORGET = 'forget'
+    // The third command name: not a write, an upstream read on the user's say-so.
+    var TEST = 'test'
 
     /** Four places a credential can live, in the words docs/02 section 1.9 uses for them. */
     var SETTINGS = {
@@ -184,6 +186,11 @@ window.__ModuleLoader__.load({
       forgetting: '\u6b63\u5728\u5fd8\u8bb0',
       test: '\u6d4b\u8bd5\u8fde\u63a5',
       testing: '\u6b63\u5728\u8bf7\u6c42\u4e0a\u6e38',
+      // Two sentences for the two ways a test can end without a number. Neither is an error,
+      // and neither is a zero: one says the button refused itself, the other says the upstream
+      // answered with nothing this page may read.
+      tooSoon: '\u4e0a\u4e00\u6b21\u8bf7\u6c42\u8fd8\u4e0d\u5230\u4e00\u5206\u949f\uff0c\u8fd9\u6b21\u6ca1\u53d1\uff08\u4e0a\u6e38\u9650\u4e00\u5206\u949f\u4e00\u6b21\uff09',
+      reached: '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
       stored: '\u5df2\u5b58\u5728\u672c\u673a',
       inLayer: '\uff08',
@@ -613,18 +620,36 @@ window.__ModuleLoader__.load({
         })
       }
 
-      // The test button asks the host the same question the rail asks, and prints the answer
-      // verbatim: a green reading here is the reading the rail is already painting, not a second
-      // opinion, because there is only one place the pool is known and it is the host.
+      // The test button asks the host to do one upstream read, and prints whatever came back --
+      // including the sentence for "I could not ask". It used to print the snapshot's three lines,
+      // which are the icon's answer and not the upstream's: a button named "test connection" that
+      // never made a connection was the quietest lie on this page.
       const test = function () {
         say(null, 'test')
-        return viewOf().then(function (view) {
-          if (view === undefined || view === null || view.lines === undefined) return say(NO_WRITES, null)
-          var lines = view.lines
-          say(String(lines.accounts) + '\n' + String(lines.rpm) + '\n' + String(lines.points), null)
-          return undefined
+        return commandOf({ name: TEST }).then(function (outcome) {
+          if (outcome === undefined || outcome === null) return say(NO_WRITES, null)
+          if (outcome.ok !== true) {
+            var why = outcome.message === undefined || outcome.message === null
+              ? outcome.reason
+              : outcome.message
+            return say(why === undefined || why === null ? COMMAND_FAILED : String(why), null)
+          }
+          var attempt = outcome.status
+          if (attempt === undefined || attempt === null) return say(NO_WRITES, null)
+          if (attempt.tooSoon === true) return say(SETTINGS.tooSoon, null)
+          // The upstream's own words, never a summary of them. On a 2xx with nothing readable the
+          // attempt carries '' and this page has to say something itself -- the one sentence it is
+          // allowed to write is the one it just observed.
+          if (attempt.said !== '') return say(String(attempt.said), null)
+          if (attempt.usage === undefined || attempt.usage === null) return say(SETTINGS.reached, null)
+          var used = attempt.usage.dailyUsedPts
+          var limit = attempt.usage.dailyLimitPts
+          if (used === undefined || used === null) return say(SETTINGS.reached, null)
+          if (limit === undefined || limit === null) return say(SETTINGS.reached, null)
+          return say(SETTINGS.reached + ' ' + String(used.value) + ' / ' + String(limit.value), null)
         })
       }
+
 
       return {
         state: state,

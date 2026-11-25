@@ -49,9 +49,14 @@ import {
   type ProviderId,
   type Snapshot,
   type UsageResult,
+  PROVIDER_BASE_URLS,
+  USAGE_POLL_FLOOR_MS,
+  parseUsageResponse,
+  scrubSecrets,
 } from '@dsh-multipool/core'
 import { iconViewOf, type IconView } from '@dsh-multipool/plugin-client'
 import type { KeyLayer } from './key-store.js'
+import type { UsageAttempt } from './usage.js'
 
 /**
  * The path prefix the page asks under, and the two endpoints below it.
@@ -85,6 +90,18 @@ export type Reading = 'unread' | 'read' | 'empty'
  */
 export const ENDPOINT_SNAPSHOT = 'snapshot'
 export const ENDPOINT_COMMAND = 'command'
+/**
+ * Not an endpoint this repo's own page calls: the third is where a *prompt* would go, so the name is
+ * taken here to mean "ask the upstream once, on purpose" and documented as such.
+ */
+export const ENDPOINT_TEST = 'test'
+/**
+ * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
+ * which today is the only provider with a usage endpoint.
+ */
+export const TEST_PROVIDER = 'providerId'
+/** Refused because this host was built without anything that can reach an upstream. */
+export const NO_TEST_SOURCE = 'multipool/no-upstream'
 
 /**
  * What the browser half asks for. A page POSTs to CHANNEL/<endpoint> and reads the answer as JSON.
@@ -130,6 +147,22 @@ export interface ChannelSource {
    * the accounts list cannot carry.
    */
   readonly keyLayer?: () => KeyLayer | undefined
+  /**
+   * The upstream usage reading for this provider, asked for now (T-2-f's test button).
+   *
+   * Absent when nobody can ask: no seam, or a seam that only describes. One call puts at most one
+   * request on the wire and charges at most that request's zero points; `tooSoon` says the call was
+   * not even made because the last one was under the floor.
+   */
+  readonly testUsage?: (providerId: ProviderId) => Promise<UsageAttempt>
+  /**
+   * Ask the seam for the key now, and write what it says into these facts.
+   *
+   * Absent when the hook was never wired. Present, it is the only way the page can make the host
+   * look: the alternative was a read on apply(), which paints a fresh install's icon with a
+   * conclusion nobody asked for.
+   */
+  readonly readFromSeam?: () => Promise<boolean>
 }
 
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
@@ -357,6 +390,7 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
  */
 export function answerOf(
   handle: ChannelHandle,
+  source?: ChannelSource,
 ): (endpoint: string, payload: unknown) => Promise<BridgeAnswer> {
   return async (endpoint: string, payload: unknown) => {
     if (endpoint === ENDPOINT_SNAPSHOT) {
@@ -377,6 +411,23 @@ export function answerOf(
           ? (payload as Record<string, unknown>).request
           : undefined
       return { ok: true as const, value: await handle.command(request) }
+    }
+    if (endpoint === ENDPOINT_TEST && source !== undefined && source.testUsage !== undefined) {
+      // The one endpoint that leaves this process and comes back with somebody else's words. The
+      // words are spoken by the seam's holder, so this branch only decides which question to put to
+      // it -- a provider id, or the one this channel prints numbers for.
+      const asked =
+        payload !== null && typeof payload === 'object'
+          ? (payload as Record<string, unknown>)[TEST_PROVIDER]
+          : undefined
+      const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd'
+      return { ok: true as const, value: await source.testUsage(providerId as ProviderId) }
+    }
+    if (endpoint === ENDPOINT_TEST) {
+      return {
+        ok: false as const,
+        error: { code: NO_TEST_SOURCE, message: 'this host cannot ask an upstream anything' },
+      }
     }
     return {
       ok: false as const,
@@ -463,8 +514,11 @@ async function readBody(req: BridgeRequest): Promise<string | undefined> {
  * Nothing is read from the cookie here and nothing is set on it. `ctx.connection.admit` has already
  * decided whether the caller reaches a route at all, before this handler is called.
  */
-export function routeOf(handle: ChannelHandle): Route {
-  const answer = answerOf(handle)
+export function routeOf(handle: ChannelHandle, source?: ChannelSource): Route {
+  // The source is optional and only the test endpoint reads it: every other answer is built from
+  // the handle. Passing it here rather than growing a second route keeps "the endpoints the page
+  // can reach" a list in one function.
+  const answer = answerOf(handle, source)
   return {
     kind: 'prefix',
     path: CHANNEL,
@@ -545,7 +599,11 @@ function endpointFrom(url: string | undefined): string {
  * apply() has to return a disposer either way, and an entry that throws is an entry DSH removes from
  * the page with only a console line left behind (docs/09 section 6.1).
  */
-export function serveOn(server: RouteServer | undefined, handle: ChannelHandle): () => void {
+export function serveOn(
+  server: RouteServer | undefined,
+  handle: ChannelHandle,
+  source?: ChannelSource,
+): () => void {
   if (server === undefined) return () => undefined
-  return server.register(routeOf(handle))
+  return server.register(routeOf(handle, source))
 }

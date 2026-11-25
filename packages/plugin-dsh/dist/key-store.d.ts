@@ -61,6 +61,19 @@ export interface CredentialSeam {
     }>;
     set(ref: string, value: string): Promise<void>;
     unset(ref: string): Promise<void>;
+    /**
+     * Ask the upstream, with the stored value attached, and hand back only its status and body (T-2-f).
+     *
+     * Optional because a seam may describe without speaking. When absent, the settings page says so
+     * rather than reporting a failed request it never made. The value never returns through here: this
+     * member exists so the one place that holds a key is also the one place that spends it.
+     */
+    fetch?(url: string, init: {
+        readonly method: string;
+    }): Promise<{
+        readonly status: number;
+        text(): Promise<string>;
+    }>;
 }
 /** What a key field may say about itself without claiming anything it has not read (U-06). */
 export type KeyState = 

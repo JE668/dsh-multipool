@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   COMMAND_CLOSED,
   COMMAND_MALFORMED,
@@ -6,6 +6,9 @@ import {
   COMMAND_UNKNOWN,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
+  ENDPOINT_TEST,
+  NO_TEST_SOURCE,
+  TEST_PROVIDER,
   answerOf,
   openChannel,
   type ChannelSource,
@@ -14,6 +17,7 @@ import {
 
 import type { Account, MetricsEvent, ProviderId } from '@dsh-multipool/core'
 import type { IconView } from '@dsh-multipool/plugin-client'
+import type { UsageAttempt } from '../src/usage.js'
 
 const NOW = Date.UTC(2026, 10, 19, 2, 0, 0)
 const BUDGET = { admitRpm: 11, sources: ['min(20,30)*0.85/1.5=11'] }
@@ -251,5 +255,46 @@ describe('the command half (T-2-e)', () => {
     // A closed channel writes nothing, whoever offered what and whenever.
     expect(log.calls).toEqual([])
     expect(late.calls).toEqual([])
+  })
+})
+
+describe('the test half (T-2-f)', () => {
+  const asked = (providerId: string): Promise<UsageAttempt> => {
+    calls.push(providerId)
+    return Promise.resolve({
+      providerId: 'amd' as ProviderId,
+      usage: { available: true, fetchedAt: 'x' },
+      said: '',
+      atMs: 1,
+      tooSoon: false,
+    })
+  }
+  let calls: string[] = []
+  beforeEach(() => {
+    calls = []
+  })
+
+  it('asks the provider it was told about, and amd when it was told nothing', async () => {
+    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }), {
+      accounts: () => [],
+      events: () => [],
+      usage: () => ({}),
+      activeSessions: () => 0,
+      queued: () => 0,
+      nowMs: () => 0,
+      reading: () => 'read',
+      testUsage: asked,
+    })
+    await answer(ENDPOINT_TEST, { [TEST_PROVIDER]: 'nim' })
+    await answer(ENDPOINT_TEST, {})
+    // Absent means the one the icon prints, not the one that happens to be first in a list.
+    expect(calls).toEqual(['nim', 'amd'])
+  })
+
+  it('refuses the test by name when this host has nothing that can ask', async () => {
+    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
+    const whole = (await answer(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
+    expect(whole.ok).toBe(false)
+    expect(whole.error?.code).toBe(NO_TEST_SOURCE)
   })
 })

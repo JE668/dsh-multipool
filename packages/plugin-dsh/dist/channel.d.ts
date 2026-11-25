@@ -42,6 +42,7 @@
 import { type Account, type MetricsEvent, type ProviderId, type Snapshot, type UsageResult } from '@dsh-multipool/core';
 import { type IconView } from '@dsh-multipool/plugin-client';
 import type { KeyLayer } from './key-store.js';
+import type { UsageAttempt } from './usage.js';
 /**
  * The path prefix the page asks under, and the two endpoints below it.
  *
@@ -72,6 +73,18 @@ export type Reading = 'unread' | 'read' | 'empty';
  */
 export declare const ENDPOINT_SNAPSHOT = "snapshot";
 export declare const ENDPOINT_COMMAND = "command";
+/**
+ * Not an endpoint this repo's own page calls: the third is where a *prompt* would go, so the name is
+ * taken here to mean "ask the upstream once, on purpose" and documented as such.
+ */
+export declare const ENDPOINT_TEST = "test";
+/**
+ * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
+ * which today is the only provider with a usage endpoint.
+ */
+export declare const TEST_PROVIDER = "providerId";
+/** Refused because this host was built without anything that can reach an upstream. */
+export declare const NO_TEST_SOURCE = "multipool/no-upstream";
 /**
  * What the browser half asks for. A page POSTs to CHANNEL/<endpoint> and reads the answer as JSON.
  */
@@ -115,6 +128,22 @@ export interface ChannelSource {
      * the accounts list cannot carry.
      */
     readonly keyLayer?: () => KeyLayer | undefined;
+    /**
+     * The upstream usage reading for this provider, asked for now (T-2-f's test button).
+     *
+     * Absent when nobody can ask: no seam, or a seam that only describes. One call puts at most one
+     * request on the wire and charges at most that request's zero points; `tooSoon` says the call was
+     * not even made because the last one was under the floor.
+     */
+    readonly testUsage?: (providerId: ProviderId) => Promise<UsageAttempt>;
+    /**
+     * Ask the seam for the key now, and write what it says into these facts.
+     *
+     * Absent when the hook was never wired. Present, it is the only way the page can make the host
+     * look: the alternative was a read on apply(), which paints a fresh install's icon with a
+     * conclusion nobody asked for.
+     */
+    readonly readFromSeam?: () => Promise<boolean>;
 }
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
 export interface IconBudget {
@@ -227,7 +256,7 @@ export declare function openChannel(options: OpenChannelOptions): ChannelHandle;
  * An unknown endpoint is refused by name. Rule 3 one level up: the set of endpoints is the whole
  * surface a page can reach, so it stays a list somebody reads.
  */
-export declare function answerOf(handle: ChannelHandle): (endpoint: string, payload: unknown) => Promise<BridgeAnswer>;
+export declare function answerOf(handle: ChannelHandle, source?: ChannelSource): (endpoint: string, payload: unknown) => Promise<BridgeAnswer>;
 /** One endpoint answered, before it is given a status. The envelope answerOf returns. */
 export type BridgeAnswer = {
     readonly ok: true;
@@ -277,7 +306,7 @@ export interface RouteServer {
  * Nothing is read from the cookie here and nothing is set on it. `ctx.connection.admit` has already
  * decided whether the caller reaches a route at all, before this handler is called.
  */
-export declare function routeOf(handle: ChannelHandle): Route;
+export declare function routeOf(handle: ChannelHandle, source?: ChannelSource): Route;
 /**
  * Claims the route and returns the disposer, or a disposer with nothing claimed.
  *
@@ -285,5 +314,5 @@ export declare function routeOf(handle: ChannelHandle): Route;
  * apply() has to return a disposer either way, and an entry that throws is an entry DSH removes from
  * the page with only a console line left behind (docs/09 section 6.1).
  */
-export declare function serveOn(server: RouteServer | undefined, handle: ChannelHandle): () => void;
+export declare function serveOn(server: RouteServer | undefined, handle: ChannelHandle, source?: ChannelSource): () => void;
 //# sourceMappingURL=channel.d.ts.map
