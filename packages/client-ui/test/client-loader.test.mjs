@@ -80,11 +80,17 @@ const nothingListening = () => Promise.reject(new TypeError('Failed to fetch'))
 function orderOf(width) {
   const seen = []
   const components = []
+  // Which slot each effect() call was made inside. 'effect' on its own says a thing was registered
+  // under an effect, not which page it leaves behind when it is not.
+  const open = []
+  const layers = []
   const ctx = {
     slots: {
       inject(name, fn) {
         seen.push(['inject', name])
+        open.push(name)
         fn()
+        open.pop()
       },
       register(owner, comp) {
         seen.push(['register', owner.name, owner.id, owner.key, owner.label])
@@ -94,6 +100,7 @@ function orderOf(width) {
     },
     effect(fn) {
       seen.push(['effect'])
+      layers.push(open.length === 0 ? 'effect' : open[open.length - 1] + '/effect')
       return fn()
     },
   }
@@ -105,7 +112,7 @@ function orderOf(width) {
   plugin.apply(ctx)
   const componentOf = (slot) =>
     components.filter((entry) => entry.owner.name === slot).map((entry) => entry.comp)
-  return { plugin, seen, componentOf }
+  return { plugin, seen, componentOf, layers }
 }
 
 test('loads one lazy factory named after the package', () => {
@@ -128,6 +135,21 @@ test('the icon and its panel share one id, or the click lands nowhere', () => {
   const iconRow = seen.find((row) => row[0] === 'register' && row[1] === 'sidebar.panellist')
   const mainRow = seen.find((row) => row[0] === 'register' && row[1] === 'main')
   assert.equal(mainRow[3], iconRow[2])
+})
+
+test('the settings page is claimed under that same id, and can be closed again', () => {
+  // Settings' list slot keys pages by id and reads the id back as the nav label. A page registered
+  // under a second id would be a second entry in Settings pointing at the same component.
+  const { seen, layers } = orderOf(fakeReact)
+  const at = seen.findIndex((row) => row[0] === 'inject' && row[1] === 'settings.section')
+  assert.ok(at >= 0, 'nothing was injected into settings.section')
+  const settingsRow = seen.slice(at).find((row) => row[0] === 'register' && row[1] === 'settings.section')
+  assert.ok(settingsRow)
+  assert.equal(settingsRow[2], 'dsh-multipool')
+  assert.equal(settingsRow[4], 'DSH Multipool')
+  // Registered through an effect of its own, so a disable takes it back out instead of leaving a
+  // ghost page in Settings for the rest of the session.
+  assert.ok(layers.includes('settings.section/effect'))
 })
 
 test('paints idle with three dashes when no host answers the call', () => {

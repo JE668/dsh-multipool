@@ -155,7 +155,7 @@ describe('client.js carries the same arithmetic as icon-state.ts', () => {
     expect(drawer.iconViewOf(absent)).toEqual(iconViewOf(absent))
   })
 
-  it('registers into the two slots layout pairs by one id', () => {
+  it('registers into the three slots layout addresses by one id', () => {
     expect(drawer.inject).toEqual(['slots'])
     const registered: Array<{ name: string; key?: string; id?: string }> = []
     const ctx = {
@@ -173,8 +173,9 @@ describe('client.js carries the same arithmetic as icon-state.ts', () => {
       },
     }
     const dispose = drawer.apply(ctx)
-    expect(registered.map((r) => r.name)).toEqual(['sidebar.panellist', 'main'])
+    expect(registered.map((r) => r.name)).toEqual(['sidebar.panellist', 'main', 'settings.section'])
     expect(registered[0]?.id).toBe(registered[1]?.key)
+    expect(registered[2]?.id).toBe(registered[0]?.id)
     void dispose
   })
 })

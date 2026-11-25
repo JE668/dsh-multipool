@@ -169,6 +169,33 @@ window.__ModuleLoader__.load({
     var CHANNEL = '/dsh-multipool'
     var CALL_TIMEOUT_MS = 4000
 
+    /** The rail and the panel went over HTTP; the key goes over the same route. */
+    var SAVE = 'save'
+    var FORGET = 'forget'
+
+    /** Four places a credential can live, in the words docs/02 section 1.9 uses for them. */
+    var SETTINGS = {
+      title: 'AMD Token Factory \u7684 API Key',
+      intro: '\u5b58\u5728\u672c\u673a\u7684\u51ed\u8bc1\u91cc\uff0c\u4e0d\u5199\u914d\u7f6e\u6587\u4ef6\uff0c\u4e0d\u8fdb\u4ed3\u5e93\u3002\u9875\u9762\u4e0d\u4f1a\u628a\u5b83\u8bfb\u56de\u6765\u3002',
+      placeholder: 'rc-\u2026',
+      save: '\u4fdd\u5b58',
+      saving: '\u6b63\u5728\u4fdd\u5b58',
+      forget: '\u5fd8\u6389\u8fd9\u628a\u94a5\u5319',
+      forgetting: '\u6b63\u5728\u5fd8\u8bb0',
+      test: '\u6d4b\u8bd5\u8fde\u63a5',
+      testing: '\u6b63\u5728\u8bf7\u95ee\u4e0a\u6e38',
+      unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
+      stored: '\u5df2\u5b58\u5728\u672c\u673a',
+      inLayer: '\uff08',
+      notStored: '\u672c\u673a\u8fd8\u6ca1\u6709\u5b58',
+      unreadable: '\u8bfb\u4e0d\u5230\u5b83\u5728\u54ea\u4e00\u5c42',
+      inFile: '\u914d\u7f6e\u6587\u4ef6',
+      inEnv: '\u73af\u5883\u53d8\u91cf',
+      inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf',
+      inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf',
+      note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u5934\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
+    }
+
     /**
      * One endpoint, asked over HTTP and answered as JSON.
      *
@@ -234,48 +261,6 @@ window.__ModuleLoader__.load({
           var said = answer.error === null || answer.error === undefined ? undefined : answer.error.message
           throw new Error(said === undefined ? NO_WRITES : String(said))
         })
-    }
-
-    /**
-     * What the wire said, in its own words.
-     *
-     * viewOf() has one failure answer -- the empty pool -- because the icon must paint something.
-     * That makes 'nobody answered' and 'somebody refused' the same three dashes on screen: a
-     * distinction the screen cannot show and a support session cannot ask for. This carries the
-     * other answer, verbatim, in the panel's fourth row. TEMPORARY -- delete it, the row, and the
-     * styles.note it borrows when the icon paints a real pool on a real install.
-     */
-    var NO_TRACE = 'render only / build 47f1098'
-
-    function traceOf() {
-      if (typeof fetch !== 'function') return Promise.resolve('1 no fetch on this page')
-      var url = CHANNEL + '/' + ENDPOINT_SNAPSHOT
-      return Promise.resolve()
-        .then(function () {
-          return fetch(url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: '{}',
-            credentials: 'same-origin',
-          })
-        })
-        .then(
-          function (response) {
-            return response.text().then(function (text) {
-              return (
-                '2 answered HTTP ' +
-                String(response.status) +
-                ' in ' +
-                String(text.length) +
-                ' chars: ' +
-                text.slice(0, 120)
-              )
-            })
-          },
-          function (thrown) {
-            return '2 refused: ' + (thrown instanceof Error ? thrown.message : String(thrown))
-          },
-        )
     }
 
     /**
@@ -401,6 +386,242 @@ window.__ModuleLoader__.load({
         clearInterval(timer)
       }
     }
+    /** Which word names the layer the seam reported, for the one place that prints it. */
+    function layerWord(layer) {
+      if (layer === undefined || layer === null) return SETTINGS.unreadable
+      if (layer === 'file') return SETTINGS.inFile
+      if (layer === 'env') return SETTINGS.inEnv
+      if (layer === 'project-env') return SETTINGS.inProjectEnv
+      if (layer === 'user-env') return SETTINGS.inUserEnv
+      return SETTINGS.unreadable
+    }
+
+    // Same three shapes the panel above uses, so the settings page reads as one more page of this
+    // app rather than as a form that arrived from somewhere else.
+    var settingsStyles = {
+      root: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: '24px 20px',
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 13,
+        lineHeight: '20px',
+        maxWidth: 520,
+      },
+      title: {
+        fontSize: 15,
+        fontWeight: 600,
+      },
+      note: {
+        color: 'var(--dsw-alias-label-tertiary)',
+        fontSize: 12,
+        lineHeight: '18px',
+        whiteSpace: 'pre-wrap',
+      },
+      where: {
+        color: 'var(--dsw-alias-label-secondary)',
+        fontSize: 12,
+        lineHeight: '18px',
+      },
+      field: {
+        boxSizing: 'border-box',
+        width: '100%',
+        padding: '6px 8px',
+        border: '1px solid var(--dsw-alias-border-secondary)',
+        borderRadius: 6,
+        background: 'var(--dsw-alias-bg-base)',
+        color: 'var(--dsw-alias-label-primary)',
+        fontFamily: 'var(--dsw-font-mono)',
+        fontSize: 12,
+      },
+      actions: {
+        display: 'flex',
+        gap: 8,
+      },
+      button: {
+        padding: '4px 10px',
+        border: '1px solid var(--dsw-alias-border-secondary)',
+        borderRadius: 6,
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 12,
+        cursor: 'pointer',
+      },
+    }
+
+    /**
+     * The settings section (T-2-f), as one component.
+     *
+     * It edits the key and reports only what the seam said about it: present or not, and which
+     * layer answered. The literal is never read back -- none of the four calls below returns one,
+     * and the field is cleared the moment a save is answered.
+     *
+     * Placed after useKeySection so the reading order matches the order things happen: state, the
+     * three crossings, then the one place that shows them.
+     */
+    function MultiPoolSettings() {
+      const key = useKeySection()
+      const state = key.state
+      const busy = state.busy !== null
+
+      const onChange = function (event) {
+        key.setDraft(event.currentTarget.value)
+      }
+
+      const where =
+        state.reading === 'unread'
+          ? SETTINGS.unread
+          : state.present
+            ? SETTINGS.stored + (state.layer === undefined ? '' : SETTINGS.inLayer + layerWord(state.layer))
+            : SETTINGS.notStored
+
+      return React.createElement(
+        'div',
+        {
+          style: settingsStyles.root,
+          'data-multipool-settings': 'true',
+          'data-multipool-reading': state.reading,
+        },
+        React.createElement('div', { key: 'title', style: settingsStyles.title }, SETTINGS.title),
+        React.createElement('div', { key: 'intro', style: settingsStyles.note }, SETTINGS.intro),
+        React.createElement('label', { key: 'where', style: settingsStyles.where, 'data-multipool-where': 'true' }, where),
+        React.createElement('input', {
+          key: 'field',
+          type: 'password',
+          value: key.draft,
+          placeholder: SETTINGS.placeholder,
+          'aria-label': SETTINGS.label,
+          autoComplete: 'off',
+          spellCheck: false,
+          disabled: busy,
+          style: settingsStyles.field,
+          onChange: onChange,
+        }),
+        React.createElement(
+          'div',
+          { key: 'actions', style: settingsStyles.actions },
+          React.createElement(
+            'button',
+            { key: SAVE, type: 'button', disabled: busy || key.draft === '', onClick: key.save, style: settingsStyles.button },
+            busy && state.busy === SAVE ? SETTINGS.saving : SETTINGS.save,
+          ),
+          React.createElement(
+            'button',
+            { key: FORGET, type: 'button', disabled: busy, onClick: key.forget, style: settingsStyles.button },
+            busy && state.busy === FORGET ? SETTINGS.forgetting : SETTINGS.forget,
+          ),
+          React.createElement(
+            'button',
+            { key: 'test', type: 'button', disabled: busy, onClick: key.test, style: settingsStyles.button },
+            busy && state.busy === 'test' ? SETTINGS.testing : SETTINGS.test,
+          ),
+        ),
+        React.createElement(
+          'div',
+          { key: 'said', style: settingsStyles.note, 'data-multipool-said': 'true' },
+          state.said === null || state.said === undefined ? '' : String(state.said),
+        ),
+        React.createElement('div', { key: 'care', style: settingsStyles.note }, SETTINGS.note),
+      )
+    }
+
+    /**
+     * The settings section's state and its three edge-crossings.
+     *
+     * Returns a plain object rather than living in a component body so a test can drive it without
+     * React: every sentence this page shows has to be the same sentence the TypeScript copy shows,
+     * and a sentence reachable only through a rendered tree is one no test can compare.
+     */
+    function useKeySection() {
+      // The page never learns the key. describe() answers whether one is configured, and the
+      // layer it came from; that is the whole vocabulary this section has for "is it there".
+      const statePair = React.useState(function () {
+        return { reading: 'unread', present: false, layer: undefined, busy: null, said: null }
+      })
+      const state = statePair[0]
+      const setState = statePair[1]
+      const draftPair = React.useState(function () {
+        return ''
+      })
+      const draft = draftPair[0]
+      const setDraft = draftPair[1]
+
+      // Every answer the store gives is shown as it gave it: the writer in key-store.ts already
+      // wraps its own refusals in the store's words37, and re-wording them here would put a
+      // second author between the user and the only sentence that knows why the write failed.
+      const say = function (sentence, busy) {
+        setState(function (was) {
+          return { reading: was.reading, present: was.present, layer: was.layer, busy: busy, said: sentence }
+        })
+      }
+
+      const read = function () {
+        return viewOf().then(function (view) {
+          const counts = view === undefined || view === null ? undefined : view.counts
+          const word = counts === undefined ? undefined : counts.reading
+          setState(function (was) {
+            return {
+              reading: word === undefined || word === 'unread' ? 'unread' : 'read',
+              present: word === undefined || word === 'unread' ? false : counts.available > 0,
+              layer: was.layer,
+              busy: was.busy,
+              said: was.said,
+            }
+          })
+        })
+      }
+
+      const save = function () {
+        say(null, SAVE)
+        return commandOf({ name: 'save', key: draft }).then(function (outcome) {
+          if (outcome.ok === true) {
+            setDraft('')
+            say(SETTINGS.stored, null)
+            return read()
+          }
+          say(outcome.message === undefined || outcome.message === null ? outcome.reason : outcome.message, null)
+          return undefined
+        })
+      }
+
+      const forget = function () {
+        say(null, FORGET)
+        return commandOf({ name: 'forget' }).then(function (outcome) {
+          if (outcome.ok === true) {
+            say(SETTINGS.notStored, null)
+            return read()
+          }
+          say(outcome.message === undefined || outcome.message === null ? outcome.reason : outcome.message, null)
+          return undefined
+        })
+      }
+
+      // The test button asks the host the same question the rail asks, and prints the answer
+      // verbatim: a green reading here is the reading the rail is already painting, not a second
+      // opinion, because there is only one place the pool is known and it is the host.
+      const test = function () {
+        say(null, 'test')
+        return viewOf().then(function (view) {
+          if (view === undefined || view === null || view.lines === undefined) return say(NO_WRITES, null)
+          var lines = view.lines
+          say(String(lines.accounts) + '\n' + String(lines.rpm) + '\n' + String(lines.points), null)
+          return undefined
+        })
+      }
+
+      return {
+        state: state,
+        draft: draft,
+        setDraft: setDraft,
+        save: save,
+        forget: forget,
+        test: test,
+        read: read,
+      }
+    }
+
+    /** The rail row: one dot, plus the fraction in words when the rail is wide enough to say it. */
     function SidebarIcon(props) {
       const pair = React.useState(emptyView)
       const view = pair[0]
@@ -453,6 +674,7 @@ window.__ModuleLoader__.load({
         },
         idle || small ? undefined : String(view.counts.available),
       )
+
       return React.createElement(
         'span',
         {
@@ -494,20 +716,11 @@ window.__ModuleLoader__.load({
       const pair = React.useState(emptyView)
       const view = pair[0]
       const setView = pair[1]
-      const tracePair = React.useState(function () { return NO_TRACE })
-      const trace = tracePair[0]
-      const setTrace = tracePair[1]
 
       React.useEffect(function () {
         var live = true
-        // Written synchronously, before any promise: whatever the bridge answers, the fact that
-        // this effect ran arrives first, and a rejected chain cannot swallow it.
-        setTrace('effect ran / build 225e244')
-        traceOf().then(function (said) {
-          if (live) setTrace(said)
-        })
-        // Same timer as the rail icon, so the panel and the badge cannot disagree about the pool
-        // while both are on screen: one question, one interval, two paintings of the answer.
+        // One timer for the rail, one for the panel, both on the same interval: the badge and the
+        // panel cannot disagree about the pool while both are on screen.
         var stopFollowing = follow(setView)
         return function () {
           live = false
@@ -535,10 +748,6 @@ window.__ModuleLoader__.load({
           whiteSpace: 'pre-wrap',
           fontVariantNumeric: 'tabular-nums',
         },
-        note: {
-          color: 'var(--dsw-alias-label-tertiary)',
-          fontSize: 12,
-        },
       }
 
       const rows = [
@@ -551,14 +760,6 @@ window.__ModuleLoader__.load({
         React.createElement('div', { key: 'title', style: styles.title },
           'AMD \u8d26\u53f7\u6c60'),
         React.createElement('div', { key: 'rows' }, rows),
-        // TEMPORARY (A of the two options): the verbatim outcome of one direct call, so a
-        // restart can tell a missing route from a refused one. Both look like three dashes
-        // above. Delete this line -- and traceOf/NO_TRACE with it -- once they are told apart.
-        React.createElement(
-          'div',
-          { key: 'trace', style: styles.note, 'data-multipool-trace': 'true' },
-          String(trace),
-        ),
       ]
 
       return React.createElement(
@@ -619,6 +820,24 @@ window.__ModuleLoader__.load({
             ),
           ),
         )
+        // The settings page is the third half of the same plugin, not a separate one: it lives
+        // inside Settings' own list slot, and it cannot exist before Settings does. Every other
+        // slot here is declared by a plugin this profile always loads; this one is declared by
+        // client-ui-settings-general, inside a whenAccess for the host's settings/describe, so an
+        // install that composed no settings shell has no such slot and this inject is a no-op.
+        ctx.slots.inject('settings.section', () =>
+          ctx.effect(() =>
+            ctx.slots.register(
+              {
+                name: 'settings.section',
+                id: 'dsh-multipool',
+                order: 40,
+                label: PANEL_LABEL,
+              },
+              MultiPoolSettings,
+            ),
+          ),
+        )
       },
       // Held out to the tests so icon-state.test.ts can put this copy and the TypeScript one
       // on the same inputs. Module-loader does not require this module to implement a fixed
@@ -626,6 +845,8 @@ window.__ModuleLoader__.load({
       iconLevelOf: iconLevelOf,
       iconViewOf: iconViewOf,
       emptyView: emptyView,
+      commandOf: commandOf,
+      viewOf: viewOf,
     }
   },
 })
