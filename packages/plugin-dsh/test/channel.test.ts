@@ -70,6 +70,31 @@ describe('channel', () => {
     expect(handle.publish().wire).toContain('no-endpoint')
   })
 
+  it('sends the layer with the view, and leaves the field out when there is none', async () => {
+    // The page prints "stored in <layer>" and must never print a layer nobody reported. So an absent
+    // layer has to be absent from the object, not present as undefined: a page checking for the
+    // member would otherwise read the second as a reading about the seam.
+    const told = openChannel({
+      source: { ...sourceOf([acct('amd', 'AMD-A', 'available')]), keyLayer: () => 'env' as const },
+      budget: BUDGET,
+      pointsProviderId: 'amd',
+    })
+    const fromEnv = (await answerOf(told)(ENDPOINT_SNAPSHOT, {})) as {
+      value: { layer?: string }
+    }
+    expect(fromEnv.value.layer).toBe('env')
+
+    const silent = openChannel({
+      source: sourceOf([acct('amd', 'AMD-A', 'available')]),
+      budget: BUDGET,
+      pointsProviderId: 'amd',
+    })
+    const unread = (await answerOf(silent)(ENDPOINT_SNAPSHOT, {})) as {
+      value: { layer?: string }
+    }
+    expect('layer' in unread.value).toBe(false)
+  })
+
   it('keeps the key out of the wire, however the key is read', () => {
     const handle = openChannel({
       source: sourceOf([acct('amd', 'AMD-A', 'available')]),

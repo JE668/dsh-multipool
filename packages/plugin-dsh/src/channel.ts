@@ -121,6 +121,15 @@ export interface ChannelSource {
    * to remember.
    */
   readonly reading: () => Reading
+  /**
+   * Which layer answered the key read, or nothing when nobody has read it yet.
+   *
+   * The settings page's one non-numeric line depends on this: "stored" alone is true of every
+   * install and tells a reader nothing about whether their `.env` or their Keychain is what
+   * answered. It rides beside `reading` for the same reason -- both are facts about the seam that
+   * the accounts list cannot carry.
+   */
+  readonly keyLayer?: () => KeyLayer | undefined
 }
 
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
@@ -189,6 +198,8 @@ export interface PublishedView {
   readonly view: IconView
   /** The scrubbed JSON. Kept beside the view so a test can assert the wire carries no key. */
   readonly wire: string
+  /** Which layer answered, absent when nobody has read the seam. Same reason as ChannelSource. */
+  readonly layer?: KeyLayer
 }
 
 export interface OpenChannelOptions {
@@ -246,7 +257,13 @@ export function buildPublishedView(
   const view = iconViewOf({ snapshot, budget, pointsProviderId, attached: true, reading })
   // The list and the claim about it travel together. serializeSnapshot() cannot carry this -- it
   // counts accounts, and a count of zero is the same number whether the pool was read or not.
-  return { snapshot, reading, view, wire: serializeSnapshot(snapshot) }
+  // Absent rather than undefined-valued: a channel with no seam is a shape without the member, and
+  // spreading `{ keyLayer: undefined }` into every answer would make "cannot tell" look like "was
+  // asked and said nothing" to a page that only checks for the key's presence.
+  const layer = source.keyLayer === undefined ? undefined : source.keyLayer()
+  return layer === undefined
+    ? { snapshot, reading, view, wire: serializeSnapshot(snapshot) }
+    : { snapshot, reading, view, layer, wire: serializeSnapshot(snapshot) }
 }
 
 /** The name a command request carries. One field, because there is one question. */
@@ -344,7 +361,12 @@ export function answerOf(
   return async (endpoint: string, payload: unknown) => {
     if (endpoint === ENDPOINT_SNAPSHOT) {
       const built = handle.publish()
-      return { ok: true as const, value: { view: built.view, reading: built.reading } }
+      // The layer travels with the view, and only when there is one to send: a page that receives
+      // `layer: undefined` cannot tell "no layer was reported" from "this host never reports layers",
+      // and the second is a fact about a host nobody has met.
+      return built.layer === undefined
+        ? { ok: true as const, value: { view: built.view, reading: built.reading } }
+        : { ok: true as const, value: { view: built.view, reading: built.reading, layer: built.layer } }
     }
     if (endpoint === ENDPOINT_COMMAND) {
       // The payload is { request } rather than the request itself: a command with no fields

@@ -53,7 +53,7 @@ describe('the host half publishes what it has read, and nothing it has not', () 
 
   it('still claims nothing configured when every fact is an empty list', () => {
     const source = channelSourceFrom(
-      { accounts: [], events: [], usage: {}, activeSessions: 0, queued: 0 },
+      { accounts: [], events: [], usage: {}, activeSessions: 0, queued: 0, keyLayer: undefined },
       () => NOW,
     )
     const snapshot = snapshotOf(source)
@@ -69,6 +69,7 @@ describe('the host half publishes what it has read, and nothing it has not', () 
         usage: {},
         activeSessions: 1,
         queued: 2,
+        keyLayer: undefined,
       },
       () => NOW,
     )

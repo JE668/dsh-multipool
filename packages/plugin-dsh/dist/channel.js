@@ -90,7 +90,13 @@ export function buildPublishedView(source, budget, pointsProviderId) {
     const view = iconViewOf({ snapshot, budget, pointsProviderId, attached: true, reading });
     // The list and the claim about it travel together. serializeSnapshot() cannot carry this -- it
     // counts accounts, and a count of zero is the same number whether the pool was read or not.
-    return { snapshot, reading, view, wire: serializeSnapshot(snapshot) };
+    // Absent rather than undefined-valued: a channel with no seam is a shape without the member, and
+    // spreading `{ keyLayer: undefined }` into every answer would make "cannot tell" look like "was
+    // asked and said nothing" to a page that only checks for the key's presence.
+    const layer = source.keyLayer === undefined ? undefined : source.keyLayer();
+    return layer === undefined
+        ? { snapshot, reading, view, wire: serializeSnapshot(snapshot) }
+        : { snapshot, reading, view, layer, wire: serializeSnapshot(snapshot) };
 }
 /** The name a command request carries. One field, because there is one question. */
 const COMMAND_NAME = 'name';
@@ -179,7 +185,12 @@ export function answerOf(handle) {
     return async (endpoint, payload) => {
         if (endpoint === ENDPOINT_SNAPSHOT) {
             const built = handle.publish();
-            return { ok: true, value: { view: built.view, reading: built.reading } };
+            // The layer travels with the view, and only when there is one to send: a page that receives
+            // `layer: undefined` cannot tell "no layer was reported" from "this host never reports layers",
+            // and the second is a fact about a host nobody has met.
+            return built.layer === undefined
+                ? { ok: true, value: { view: built.view, reading: built.reading } }
+                : { ok: true, value: { view: built.view, reading: built.reading, layer: built.layer } };
         }
         if (endpoint === ENDPOINT_COMMAND) {
             // The payload is { request } rather than the request itself: a command with no fields

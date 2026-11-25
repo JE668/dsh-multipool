@@ -314,6 +314,11 @@ window.__ModuleLoader__.load({
           //
           // That threw, ask() caught the throw as a refusal, and viewOf() painted the refusal as the
           // placeholder -- so every real answer showed as three dashes while the wire was green.
+          // The layer rides on the view's object, not beside it in a second return value: the
+          // settings page is the only reader, and every other caller already treats what comes
+          // back here as an opaque IconView. Added only when the host sent one, so a host that
+          // never reports layers is distinguishable from one that reported none.
+          if (answer.layer !== undefined) answer.view.layer = answer.layer
           return answer.view
         },
       )
@@ -465,6 +470,14 @@ window.__ModuleLoader__.load({
       const state = key.state
       const busy = state.busy !== null
 
+      // Ask once on arrival: the section owes the reader its own answer before the reader clicks
+      // anything, and read() is the one projection this page needs (where the key lives), not the
+      // rail's three lines. No timer here -- save/forget re-ask after they land, and those are the
+      // only two moments this page's own text can change.
+      React.useEffect(function () {
+        void key.read()
+      }, [])
+
       const onChange = function (event) {
         key.setDraft(event.currentTarget.value)
       }
@@ -548,7 +561,7 @@ window.__ModuleLoader__.load({
       const setDraft = draftPair[1]
 
       // Every answer the store gives is shown as it gave it: the writer in key-store.ts already
-      // wraps its own refusals in the store's words37, and re-wording them here would put a
+      // wraps its own refusals in the store's words, and re-wording them here would put a
       // second author between the user and the only sentence that knows why the write failed.
       const say = function (sentence, busy) {
         setState(function (was) {
@@ -564,7 +577,10 @@ window.__ModuleLoader__.load({
             return {
               reading: word === undefined || word === 'unread' ? 'unread' : 'read',
               present: word === undefined || word === 'unread' ? false : counts.available > 0,
-              layer: was.layer,
+              // Taken from the same answer that carried the count, never remembered from a
+              // previous one: a layer the reader saw once and kept would outlive a key they then
+              // deleted, and print "stored in your environment" over an empty field.
+              layer: view === undefined || view === null ? undefined : view.layer,
               busy: was.busy,
               said: was.said,
             }

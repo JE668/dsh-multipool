@@ -228,6 +228,10 @@ export function reportKeyInto(
     const accounts = accountFrom(status.state)
     if (accounts === undefined) return
     facts.accounts = accounts
+    // The layer rides with the accounts, on the same answer and in the same assignment, because
+    // the two are one reading: "there is a key" without "and it came from here" is what the page
+    // used to print. `absent` keeps its own layer, which is none.
+    facts.keyLayer = status.state.kind === 'configured' ? status.state.layer : undefined
     sink(status)
   }
   // watchKeyStatus() already reads once on its way in, so there is no separate first read here:

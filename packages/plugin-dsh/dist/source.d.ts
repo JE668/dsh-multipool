@@ -18,6 +18,7 @@
  */
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
 import type { ChannelSource } from './channel.js';
+import type { KeyLayer } from './key-store.js';
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
     readonly accounts: readonly Account[] | undefined;
@@ -25,6 +26,15 @@ export interface SourceFacts {
     readonly usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined;
     readonly activeSessions: number | undefined;
     readonly queued: number | undefined;
+    /**
+     * Which layer answered when the key was last read, or absent when nobody has read it.
+     *
+     * It sits beside `accounts` rather than inside them because it is a fact about the seam, not
+     * about the accounts: `accountFrom()` will not put a layer on an Account, and a settings page that
+     * wanted one would have to be handed it anyway. Absent when nobody looked, so a page can say "no
+     * one has read" instead of "the file", which it would merely be guessing.
+     */
+    readonly keyLayer: KeyLayer | undefined;
 }
 /** A source that has nothing to report yet: every member is absent, none is zero. */
 export declare const NOTHING_READ: SourceFacts;
@@ -41,6 +51,15 @@ export declare const NOTHING_READ: SourceFacts;
  * carried alongside the list, not deduced from it.
  */
 export declare function channelSourceFrom(facts: SourceFacts, nowMs: () => number): ChannelSource;
+/**
+ * Which layer last answered, or nothing at all when nobody has asked yet.
+ *
+ * Not `facts.keyLayer ?? 'file'`: key-store.ts already draws that line for a *configured* key with
+ * no named source, where "the value is there and saying where would be a guess" still deserves the
+ * word that describes the common case. Here the question has not been put, so the only honest answer
+ * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
+ */
+export declare function keyLayerOf(facts: SourceFacts): KeyLayer | undefined;
 /**
  * Whether the facts in hand came from a read, from a pool that was read and empty, or from neither.
  *

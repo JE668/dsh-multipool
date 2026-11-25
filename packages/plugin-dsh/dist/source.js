@@ -23,6 +23,7 @@ export const NOTHING_READ = {
     usage: undefined,
     activeSessions: undefined,
     queued: undefined,
+    keyLayer: undefined,
 };
 /**
  * The channel's shape, filled from facts that may be absent.
@@ -51,7 +52,19 @@ export function channelSourceFrom(facts, nowMs) {
         // this file was handed, and a false one about the pool, when nobody has been asked yet.
         // So it is not derived here -- it is the caller saying whether the read happened at all.
         reading: () => readingOf(facts),
+        keyLayer: () => keyLayerOf(facts),
     };
+}
+/**
+ * Which layer last answered, or nothing at all when nobody has asked yet.
+ *
+ * Not `facts.keyLayer ?? 'file'`: key-store.ts already draws that line for a *configured* key with
+ * no named source, where "the value is there and saying where would be a guess" still deserves the
+ * word that describes the common case. Here the question has not been put, so the only honest answer
+ * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
+ */
+export function keyLayerOf(facts) {
+    return facts.keyLayer;
 }
 /** Unread when the list is absent; empty or read when it was handed over, judged by its size. */
 export function readingOf(facts) {

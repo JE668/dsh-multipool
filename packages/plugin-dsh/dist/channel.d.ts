@@ -106,6 +106,15 @@ export interface ChannelSource {
      * to remember.
      */
     readonly reading: () => Reading;
+    /**
+     * Which layer answered the key read, or nothing when nobody has read it yet.
+     *
+     * The settings page's one non-numeric line depends on this: "stored" alone is true of every
+     * install and tells a reader nothing about whether their `.env` or their Keychain is what
+     * answered. It rides beside `reading` for the same reason -- both are facts about the seam that
+     * the accounts list cannot carry.
+     */
+    readonly keyLayer?: () => KeyLayer | undefined;
 }
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
 export interface IconBudget {
@@ -166,6 +175,8 @@ export interface PublishedView {
     readonly view: IconView;
     /** The scrubbed JSON. Kept beside the view so a test can assert the wire carries no key. */
     readonly wire: string;
+    /** Which layer answered, absent when nobody has read the seam. Same reason as ChannelSource. */
+    readonly layer?: KeyLayer;
 }
 export interface OpenChannelOptions {
     readonly source: ChannelSource;

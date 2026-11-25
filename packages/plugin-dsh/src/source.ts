@@ -19,6 +19,7 @@
 
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core'
 import type { ChannelSource } from './channel.js'
+import type { KeyLayer } from './key-store.js'
 
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
@@ -27,6 +28,15 @@ export interface SourceFacts {
   readonly usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined
   readonly activeSessions: number | undefined
   readonly queued: number | undefined
+  /**
+   * Which layer answered when the key was last read, or absent when nobody has read it.
+   *
+   * It sits beside `accounts` rather than inside them because it is a fact about the seam, not
+   * about the accounts: `accountFrom()` will not put a layer on an Account, and a settings page that
+   * wanted one would have to be handed it anyway. Absent when nobody looked, so a page can say "no
+   * one has read" instead of "the file", which it would merely be guessing.
+   */
+  readonly keyLayer: KeyLayer | undefined
 }
 
 /** A source that has nothing to report yet: every member is absent, none is zero. */
@@ -36,6 +46,7 @@ export const NOTHING_READ: SourceFacts = {
   usage: undefined,
   activeSessions: undefined,
   queued: undefined,
+  keyLayer: undefined,
 }
 
 /**
@@ -65,7 +76,20 @@ export function channelSourceFrom(facts: SourceFacts, nowMs: () => number): Chan
     // this file was handed, and a false one about the pool, when nobody has been asked yet.
     // So it is not derived here -- it is the caller saying whether the read happened at all.
     reading: () => readingOf(facts),
+    keyLayer: () => keyLayerOf(facts),
   }
+}
+
+/**
+ * Which layer last answered, or nothing at all when nobody has asked yet.
+ *
+ * Not `facts.keyLayer ?? 'file'`: key-store.ts already draws that line for a *configured* key with
+ * no named source, where "the value is there and saying where would be a guess" still deserves the
+ * word that describes the common case. Here the question has not been put, so the only honest answer
+ * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
+ */
+export function keyLayerOf(facts: SourceFacts): KeyLayer | undefined {
+  return facts.keyLayer
 }
 
 /**
