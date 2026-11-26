@@ -67,7 +67,7 @@ function recordingPage(hostLoad) {
 /** A host that parses the body it was sent, and answers with `reply` wrapped in an envelope. */
 function envelopeHost(reply) {
   return (url, init) =>
-    Promise.resolve(response(JSON.stringify({ ok: true, value: reply(url, JSON.parse(init.body)) })))
+    Promise.resolve(response(JSON.stringify({ ok: true, value: reply(url, JSON.parse(init.body === 'null' ? '{}' : init.body)) })))
 }
 
 /** What a browser says when no server holds the port: a rejected fetch, not a Response. */
@@ -198,6 +198,22 @@ test('asks its own origin for the endpoint the host half serves', async () => {
     request: { name: 'save', key: 'rc-abc' },
   })
   assert.deepEqual(outcome, { ok: true, message: null })
+})
+
+test('the test button presses the test endpoint, not the command one', async () => {
+  // Boundary. 'test is not a write' was a true sentence printed by the wrong door: the page was
+  // posting { name: 'test' } to /command, the command table rightly refused a word that is not a
+  // command, and the refusal looked like the button working. A test reaches an upstream, so it has
+  // its own endpoint -- and an install with no credential service must still be able to answer it.
+  const page = recordingPage(envelopeHost(() => ({ said: 'HTTP 401: Login required', usage: null })))
+  const plugin = factory(page)
+  const said = await plugin.testOf()
+  assert.equal(page.calls.length, 1)
+  assert.equal(page.calls[0][0], '/dsh-multipool/test')
+  // undefined body: not an object, not even an empty one. The host reads a provider id out of
+  // whatever arrives, and {} would look like a payload that named nobody.
+  assert.equal(page.calls[0][1].body, "null")
+  assert.equal(said, 'HTTP 401: Login required')
 })
 
 test('a refusal, a thrown fetch and a dead host are three sentences, all envelopes', async () => {

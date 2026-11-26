@@ -40,6 +40,10 @@ window.__ModuleLoader__.load({
     // can check that at runtime except this file and its test, which is why they are re-typed.
     var ENDPOINT_SNAPSHOT = 'snapshot'
     var ENDPOINT_COMMAND = 'command'
+    // Not a command: a read of its own kind, answered where the source is rather than where the
+    // write seam is. It has to keep working on an install with no credential service at all, and
+    // a write route would not -- commandOf() would return "no credential service" for it.
+    var ENDPOINT_TEST = 'test'
     var NO_VALUE = '\u2014'
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
@@ -169,11 +173,9 @@ window.__ModuleLoader__.load({
     var CHANNEL = '/dsh-multipool'
     var CALL_TIMEOUT_MS = 4000
 
-    /** The rail and the panel went over HTTP; the key goes over the same route. */
+    /** The rail and the panel went over HTTP; the key goes over the same route. Two write words only. */
     var SAVE = 'save'
     var FORGET = 'forget'
-    // The third command name: not a write, an upstream read on the user's say-so.
-    var TEST = 'test'
 
     /** Four places a credential can live, in the words docs/02 section 1.9 uses for them. */
     var SETTINGS = {
@@ -191,6 +193,8 @@ window.__ModuleLoader__.load({
       // answered with nothing this page may read.
       tooSoon: '\u4e0a\u4e00\u6b21\u8bf7\u6c42\u8fd8\u4e0d\u5230\u4e00\u5206\u949f\uff0c\u8fd9\u6b21\u6ca1\u53d1\uff08\u4e0a\u6e38\u9650\u4e00\u5206\u949f\u4e00\u6b21\uff09',
       reached: '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57',
+      // The third sentence, for "the host answered nothing at all" -- a dead route, not a dead key.
+      unreachable: '\u6ca1\u6709\u6536\u5230\u4e0a\u6e38\u7684\u56de\u7b54',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
       stored: '\u5df2\u5b58\u5728\u672c\u673a',
       inLayer: '\uff08',
@@ -220,6 +224,49 @@ window.__ModuleLoader__.load({
      * but not an envelope. Callers keep two branches -- the host said no, or the host was not heard
      * from -- and both of them arrive here as the second.
      */
+    function sentenceOf(answer) {
+      if (answer === undefined || answer === null) {
+        return SETTINGS.unreachable
+      }
+      // A primitive is the host's own sentence about a test it could not perform -- on an install
+      // with no credential service, say. It is still a sentence, so it is printed.
+      if (typeof answer !== 'object') return String(answer)
+      // ask() folds a transport failure into { ok: false, reason, message }. That envelope is this
+      // page's own sentence about a host it could not reach, and the only one it may add itself:
+      // nothing crossed the wire, so there is nothing to quote.
+      if (answer.ok === false) {
+        return answer.message === undefined || answer.message === null
+          ? SETTINGS.unreachable
+          : String(answer.message)
+      }
+      // Otherwise it is a UsageAttempt, carried under `value`. A test that could not even be
+      // attempted has no usage to show; it has the host's `said`, and that is the one thing the
+      // button exists to display.
+      // ask() hands back whatever the host put under `value`, already unwrapped -- so `answer`
+      // itself IS the attempt itself here. The snapshot endpoint is the one that answers an
+      // object with `.view` on it, and reading `answer.value` in both places is how `viewOf()` lost
+      // a whole round to three dashes.
+      var attempt = answer
+      if (attempt.tooSoon === true) return SETTINGS.tooSoon
+      // The upstream's own words, never a summary of them.
+      if (typeof attempt.said === 'string' && attempt.said !== '') return attempt.said
+      var usage = attempt.usage
+      if (usage === undefined || usage === null) return SETTINGS.reached
+      var used = usage.dailyUsedPts
+      var limit = usage.dailyLimitPts
+      if (used === undefined || used === null) return SETTINGS.reached
+      if (limit === undefined || limit === null) return SETTINGS.reached
+      // pts are pts (docs/02 section 1.3), not dollars: the field names say _usd and that is a trap
+      // this line has to avoid, not repeat.
+      return SETTINGS.reached + ' ' + String(used.value) + ' / ' + String(limit.value) + ' pts'
+    }
+
+    /** The sentence the test button prints: the host's, or this page's for a host that is not there. */
+    function testOf() {
+      // No payload: a test names no provider unless somebody above it says so, and the host's
+      // default is the one this icon prints numbers for.
+      return ask(ENDPOINT_TEST).then(sentenceOf)
+    }
     function request(endpoint, payload) {
       if (typeof fetch !== 'function') return Promise.reject(new Error(NO_WRITES))
       var url = CHANNEL + '/' + endpoint
@@ -238,7 +285,7 @@ window.__ModuleLoader__.load({
         sent = fetch(url, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload === undefined ? {} : payload),
+          body: JSON.stringify(payload === undefined ? null : payload),
           credentials: 'same-origin',
           signal: cancel === undefined ? undefined : cancel.signal,
         })
@@ -291,6 +338,15 @@ window.__ModuleLoader__.load({
         },
       )
     }
+
+    /**
+     * The host's sentence for one upstream reading, flattened to a line of text.
+     *
+     * Three of the sentences here are this page's own, and only three are allowed: 'unreachable'
+     * for no answer at all, 'tooSoon' when the host declined to ask again, and the host's message
+     * for a refusal it documented. Everything else is quoted, because a summary of somebody else's
+     * error is a new error.
+     */
 
     /** The envelope a refusal travels in, so a caller can tell one from a silence. */
     function failed(thrown) {
@@ -556,6 +612,9 @@ window.__ModuleLoader__.load({
      * React: every sentence this page shows has to be the same sentence the TypeScript copy shows,
      * and a sentence reachable only through a rendered tree is one no test can compare.
      */
+    // The host's sentence for one upstream read, kept out of useKeySection so the factory can
+    // hand it to the loader test: a wrong endpoint here is invisible to every other test -- every
+    // one of them injects a fake host that agrees with whatever URL it is given.
     function useKeySection() {
       // The page never learns the key. describe() answers whether one is configured, and the
       // layer it came from; that is the whole vocabulary this section has for "is it there".
@@ -629,30 +688,10 @@ window.__ModuleLoader__.load({
       // never made a connection was the quietest lie on this page.
       const test = function () {
         say(null, 'test')
-        return commandOf({ name: TEST }).then(function (outcome) {
-          if (outcome === undefined || outcome === null) return say(NO_WRITES, null)
-          if (outcome.ok !== true) {
-            var why = outcome.message === undefined || outcome.message === null
-              ? outcome.reason
-              : outcome.message
-            return say(why === undefined || why === null ? COMMAND_FAILED : String(why), null)
-          }
-          var attempt = outcome.status
-          if (attempt === undefined || attempt === null) return say(NO_WRITES, null)
-          if (attempt.tooSoon === true) return say(SETTINGS.tooSoon, null)
-          // The upstream's own words, never a summary of them. On a 2xx with nothing readable the
-          // attempt carries '' and this page has to say something itself -- the one sentence it is
-          // allowed to write is the one it just observed.
-          if (attempt.said !== '') return say(String(attempt.said), null)
-          if (attempt.usage === undefined || attempt.usage === null) return say(SETTINGS.reached, null)
-          var used = attempt.usage.dailyUsedPts
-          var limit = attempt.usage.dailyLimitPts
-          if (used === undefined || used === null) return say(SETTINGS.reached, null)
-          if (limit === undefined || limit === null) return say(SETTINGS.reached, null)
-          return say(SETTINGS.reached + ' ' + String(used.value) + ' / ' + String(limit.value), null)
+        return ask(ENDPOINT_TEST).then(function (outcome) {
+          return say(sentenceOf(outcome), null)
         })
       }
-
 
       return {
         state: state,
@@ -891,6 +930,7 @@ window.__ModuleLoader__.load({
       emptyView: emptyView,
       commandOf: commandOf,
       viewOf: viewOf,
+      testOf: testOf,
     }
   },
 })

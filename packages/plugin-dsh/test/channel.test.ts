@@ -1,15 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   COMMAND_CLOSED,
   COMMAND_MALFORMED,
   COMMAND_NO_WRITES,
-  COMMAND_TEST_ELSEWHERE,
   COMMAND_UNKNOWN,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
   ENDPOINT_TEST,
   NO_TEST_SOURCE,
-  TEST_PROVIDER,
   answerOf,
   openChannel,
   type ChannelSource,
@@ -18,7 +16,6 @@ import {
 
 import type { Account, MetricsEvent, ProviderId } from '@dsh-multipool/core'
 import type { IconView } from '@dsh-multipool/plugin-client'
-import type { UsageAttempt } from '../src/usage.js'
 
 const NOW = Date.UTC(2026, 10, 19, 2, 0, 0)
 const BUDGET = { admitRpm: 11, sources: ['min(20,30)*0.85/1.5=11'] }
@@ -259,83 +256,65 @@ describe('the command half (T-2-e)', () => {
   })
 })
 
-describe('the test half (T-2-f)', () => {
-  const asked = (providerId: string): Promise<UsageAttempt> => {
-    calls.push(providerId)
-    return Promise.resolve({
-      providerId: 'amd' as ProviderId,
-      usage: { available: true, fetchedAt: 'x' },
-      said: '',
-      atMs: 1,
-      tooSoon: false,
-    })
-  }
-  let calls: string[] = []
-  beforeEach(() => {
-    calls = []
-  })
-
-  it('asks the provider it was told about, and amd when it was told nothing', async () => {
-    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }), {
-      accounts: () => [],
-      events: () => [],
-      usage: () => ({}),
-      activeSessions: () => 0,
-      queued: () => 0,
-      nowMs: () => 0,
-      reading: () => 'read',
-      testUsage: asked,
-    })
-    await answer(ENDPOINT_TEST, { [TEST_PROVIDER]: 'nim' })
-    await answer(ENDPOINT_TEST, {})
-    // Absent means the one the icon prints, not the one that happens to be first in a list.
-    expect(calls).toEqual(['nim', 'amd'])
-  })
-
-  it('refuses the test by name when this host has nothing that can ask', async () => {
-    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
-    const whole = (await answer(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
-    expect(whole.ok).toBe(false)
-    expect(whole.error?.code).toBe(NO_TEST_SOURCE)
-  })
-})
-
-describe('the command names that exist', () => {
-  it('accepts test by name instead of calling it a typo', async () => {
-    // Regression: the page learned the word 'test' before this table did, so a real press came back
-    // as "unknown command" -- the right sentence for the wrong question, printed by the code that was
-    // supposed to answer it. The name list and the branches that use it have to be the same list.
-    const calls: string[] = []
-    const handle = openChannel({
-      source: {
-        ...sourceOf([acct('amd', 'AMD-A', 'available')]),
+describe('the test endpoint, which is not a command', () => {
+  it('asks the provider named in the payload, and asks the icon provider when none is named', async () => {
+    const asked: string[] = []
+    const sourceTransport = sourceOf([acct('amd', 'AMD-A', 'available')])
+    const answer = answerOf(
+      openChannel({ source: sourceTransport, budget: BUDGET, pointsProviderId: null }),
+      {
+        ...sourceTransport,
         testUsage: (providerId: ProviderId) => {
-          calls.push(providerId)
+          asked.push(providerId)
           return Promise.resolve({
             providerId,
             usage: null,
             said: 'upstream said no',
-            atMs: 7,
+            atMs: NOW,
             tooSoon: false,
           })
         },
       },
+    )
+    const named = (await answer(ENDPOINT_TEST, { providerId: 'nim' })) as {
+      ok: boolean
+      value: { providerId: string }
+    }
+    expect(named.ok).toBe(true)
+    expect(named.value.providerId).toBe('nim')
+    // An empty payload names nobody, and the default is the provider the icon prints numbers for --
+    // not the first entry of some list, which would change meaning the day a second provider lands.
+    const bare = (await answer(ENDPOINT_TEST, {})) as { value: { providerId: string } }
+    expect(bare.value.providerId).toBe('amd')
+    expect(asked).toEqual(['nim', 'amd'])
+  })
+
+  it('refuses by name when no source can be asked', async () => {
+    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
+    const refused = (await answer(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
+    expect(refused.ok).toBe(false)
+    expect(refused.error?.code).toBe(NO_TEST_SOURCE)
+  })
+})
+
+describe('the command names that exist', () => {
+  it('does not answer test, which is an endpoint and not a command', async () => {
+    // Regression, and a boundary. 'test' used to be added to this table so a real press would stop
+    // saying "unknown command" -- which made the press come back "test is not a write" instead. Both
+    // are refusals from this door, for a request that never belonged at this door: the page has
+    // ENDPOINT_TEST for it, and answerOf() holds the source. This test keeps the two entrances apart,
+    // so the next round cannot re-teach the table a word it should keep refusing.
+    const handle = openChannel({
+      source: sourceOf([acct('amd', 'AMD-A', 'available')]),
       budget: BUDGET,
       pointsProviderId: null,
     })
-    // The two answers that both cross the wire: 'unknown command' (the table never had the name)
-    // and 'test is not a write' (the table has it; this endpoint is the wrong door for it).
-    // Not toBeDefined(): a refusal is a defined object too, so { ok: false } passes that assertion
-    // under the very bug this test was written for. The two answers differ in which sentence they are.
-    expect(await handle.command({ name: 'test' })).toEqual({
-      ok: false,
-      reason: COMMAND_TEST_ELSEWHERE,
-    })
+    expect(await handle.command({ name: 'test' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
+    expect(await handle.command({ name: 'Test' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
   })
 
   it('still refuses a name nobody wrote a branch for', async () => {
     const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
     expect(await handle.command({ name: 'probe!' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
-    expect(await handle.command({ name: 'Test' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
   })
 })
