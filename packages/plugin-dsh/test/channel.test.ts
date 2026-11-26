@@ -3,6 +3,7 @@ import {
   COMMAND_CLOSED,
   COMMAND_MALFORMED,
   COMMAND_NO_WRITES,
+  COMMAND_TEST_ELSEWHERE,
   COMMAND_UNKNOWN,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
@@ -296,5 +297,45 @@ describe('the test half (T-2-f)', () => {
     const whole = (await answer(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
     expect(whole.ok).toBe(false)
     expect(whole.error?.code).toBe(NO_TEST_SOURCE)
+  })
+})
+
+describe('the command names that exist', () => {
+  it('accepts test by name instead of calling it a typo', async () => {
+    // Regression: the page learned the word 'test' before this table did, so a real press came back
+    // as "unknown command" -- the right sentence for the wrong question, printed by the code that was
+    // supposed to answer it. The name list and the branches that use it have to be the same list.
+    const calls: string[] = []
+    const handle = openChannel({
+      source: {
+        ...sourceOf([acct('amd', 'AMD-A', 'available')]),
+        testUsage: (providerId: ProviderId) => {
+          calls.push(providerId)
+          return Promise.resolve({
+            providerId,
+            usage: null,
+            said: 'upstream said no',
+            atMs: 7,
+            tooSoon: false,
+          })
+        },
+      },
+      budget: BUDGET,
+      pointsProviderId: null,
+    })
+    // The two answers that both cross the wire: 'unknown command' (the table never had the name)
+    // and 'test is not a write' (the table has it; this endpoint is the wrong door for it).
+    // Not toBeDefined(): a refusal is a defined object too, so { ok: false } passes that assertion
+    // under the very bug this test was written for. The two answers differ in which sentence they are.
+    expect(await handle.command({ name: 'test' })).toEqual({
+      ok: false,
+      reason: COMMAND_TEST_ELSEWHERE,
+    })
+  })
+
+  it('still refuses a name nobody wrote a branch for', async () => {
+    const handle = openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null })
+    expect(await handle.command({ name: 'probe!' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
+    expect(await handle.command({ name: 'Test' })).toEqual({ ok: false, reason: COMMAND_UNKNOWN })
   })
 })

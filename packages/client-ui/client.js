@@ -196,10 +196,13 @@ window.__ModuleLoader__.load({
       inLayer: '\uff08',
       notStored: '\u672c\u673a\u8fd8\u6ca1\u6709\u5b58',
       unreadable: '\u8bfb\u4e0d\u5230\u5b83\u5728\u54ea\u4e00\u5c42',
-      inFile: '\u914d\u7f6e\u6587\u4ef6',
-      inEnv: '\u73af\u5883\u53d8\u91cf',
-      inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf',
-      inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf',
+      // The right bracket closes here, not at the one caller: inLayer opens "(" and these four
+      // close it, so a second place cannot print "stored (config file" for ever. If the seam cannot
+      // name a layer, layerWord answers unreadable and nothing was opened to close.
+      inFile: '\u914d\u7f6e\u6587\u4ef6\uff09',
+      inEnv: '\u73af\u5883\u53d8\u91cf\uff09',
+      inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf\uff09',
+      inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf\uff09',
       note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u6267\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
     }
 

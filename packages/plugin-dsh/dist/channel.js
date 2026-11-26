@@ -84,6 +84,8 @@ export const COMMAND_UNKNOWN = 'unknown command';
 export const COMMAND_MALFORMED = 'malformed command';
 /** Refused because this channel was closed before the command arrived. */
 export const COMMAND_CLOSED = 'channel is closed';
+/** Refused because 'test' is not a write: it is answered one level up, where the source is. */
+export const COMMAND_TEST_ELSEWHERE = 'test is not a write';
 /** Refused because this install has no credential service to write through. */
 export const COMMAND_NO_WRITES = 'no credential service';
 export function buildPublishedView(source, budget, pointsProviderId) {
@@ -113,7 +115,13 @@ export function buildPublishedView(source, budget, pointsProviderId) {
 /** The name a command request carries. One field, because there is one question. */
 const COMMAND_NAME = 'name';
 const COMMAND_KEY = 'key';
-const SAVE_OR_FORGET = ['save', 'forget'];
+/**
+ * Every command name this channel answers. Three, and it is one list rather than three strings
+ * scattered through branches because a name missing here is refused before anything is read,
+ * written, or asked upstream -- which is how 'test' came back as "unknown command" on a page that
+ * had already learned the word. Adding a command is a line here and a branch below.
+ */
+const KNOWN_COMMANDS = ['save', 'forget', 'test'];
 /**
  * Run one command, or say why it cannot run.
  *
@@ -129,9 +137,19 @@ async function dispatch(request, writes, isClosed) {
         ? request
         : undefined;
     const name = fields === undefined ? undefined : fields[COMMAND_NAME];
-    if (typeof name !== 'string' || !SAVE_OR_FORGET.includes(name)) {
+    if (typeof name !== 'string' || !KNOWN_COMMANDS.includes(name)) {
         return { ok: false, reason: COMMAND_UNKNOWN };
     }
+    // Two facts are true at once when this name arrives here, and they are not the same sentence.
+    // No write seam is "this install cannot save a key"; a name that is not a write is "this name was
+    // answered one level up, where the source is" -- true on every install, seam or no seam. So the
+    // wrongdoor answer cannot depend on `writes`, and it cannot be written as a nested conditional that
+    // looks like it does.
+    //
+    // Only reachable if command() is called directly, which no current caller does: the page sends
+    // 'test' to answerOf(), and that branch never gets here.
+    if (name === 'test')
+        return { ok: false, reason: COMMAND_TEST_ELSEWHERE };
     if (writes === undefined)
         return { ok: false, reason: COMMAND_NO_WRITES };
     if (name === 'forget')

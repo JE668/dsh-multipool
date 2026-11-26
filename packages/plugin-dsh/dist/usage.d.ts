@@ -20,7 +20,7 @@
 import { type ProviderId, type UsageResult } from '@dsh-multipool/core';
 import type { CredentialSeam } from './key-store.js';
 /** Where the upstream usage reading answers, and how it is spelled when it does not. */
-export declare const USAGE_PATH = "/v1/usage?include_recent=true";
+export declare const USAGE_PATH = "/usage?include_recent=true";
 /** One frame of a reading: the JSON text, or the status line when the text is not the answer. */
 export interface UsageFrame {
     readonly status: number;

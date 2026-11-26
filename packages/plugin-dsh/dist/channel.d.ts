@@ -166,6 +166,8 @@ export declare const COMMAND_UNKNOWN = "unknown command";
 export declare const COMMAND_MALFORMED = "malformed command";
 /** Refused because this channel was closed before the command arrived. */
 export declare const COMMAND_CLOSED = "channel is closed";
+/** Refused because 'test' is not a write: it is answered one level up, where the source is. */
+export declare const COMMAND_TEST_ELSEWHERE = "test is not a write";
 /** Refused because this install has no credential service to write through. */
 export declare const COMMAND_NO_WRITES = "no credential service";
 /** What the seam says about the key now, minus the seam itself: `seam` is a live object, not wire. */

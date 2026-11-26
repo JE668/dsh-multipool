@@ -19,7 +19,7 @@
  */
 import { USAGE_POLL_FLOOR_MS, parseUsageResponse, PROVIDER_BASE_URLS, scrubSecrets, } from './vendor/core/index.js';
 /** Where the upstream usage reading answers, and how it is spelled when it does not. */
-export const USAGE_PATH = '/v1/usage?include_recent=true';
+export const USAGE_PATH = '/usage?include_recent=true';
 /**
  * Make the request the seam can make, or nothing when it cannot make one.
  *
