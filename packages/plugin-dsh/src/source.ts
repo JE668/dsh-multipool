@@ -115,7 +115,16 @@ export function channelSourceFrom(
  * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
  */
 export function keyLayerOf(facts: SourceFacts): KeyLayer | undefined {
-  return facts.keyLayer
+  // NOTHING_READ leaves the member out, so reading it off here is reading a value that may simply
+  // not exist yet -- TypeScript happily calls it KeyLayer | undefined because the interface does,
+  // and the settings page then prints a layer nobody reported. The runtime check is the one that
+  // matters: absent facts, absent layer.
+  const seen = (facts as { readonly keyLayer?: unknown }).keyLayer
+  if (typeof seen !== 'string') return undefined
+  // The four names are spelled again here rather than imported from key-store.ts: that module owns
+  // what a layer *means* to the key field, this one only owns which spellings may leave the process.
+  if (seen !== 'file' && seen !== 'env' && seen !== 'project-env' && seen !== 'user-env') return undefined
+  return seen
 }
 
 /**

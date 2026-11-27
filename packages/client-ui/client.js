@@ -194,6 +194,11 @@ window.__ModuleLoader__.load({
       tooSoon: '\u4e0a\u4e00\u6b21\u8bf7\u6c42\u8fd8\u4e0d\u5230\u4e00\u5206\u949f\uff0c\u8fd9\u6b21\u6ca1\u53d1\uff08\u4e0a\u6e38\u9650\u4e00\u5206\u949f\u4e00\u6b21\uff09',
       reached: '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57',
       reading: '\u4e0a\u6e38\u56de\u7b54\uff1a',
+      // Said after a bare count only when the layer is known, and after a carried count always:
+      // the first reading the reader did not watch arrive, they only saw where it landed.
+      livesIn: '\uff0c\u5b58\u5728',
+      carried: '\u2014\u7231\u7528\u4e0a\u4e00\u6b21\u8bfb\u6570\uff08\u4e00\u5206\u949f\u5185\u53ea\u95ee\u4e00\u6b21\uff09',
+      staying: '\uff0c\u6362\u7ec8\u7aef\u3001\u91cd\u88c5\u73af\u5883\u90fd\u8fd8\u5728',
       // The third sentence, for "the host answered nothing at all" -- a dead route, not a dead key.
       unreachable: '\u6ca1\u6709\u6536\u5230\u4e0a\u6e38\u7684\u56de\u7b54',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
@@ -251,6 +256,13 @@ window.__ModuleLoader__.load({
       if (attempt.tooSoon === true) return SETTINGS.tooSoon
       // The upstream's own words, never a summary of them.
       if (typeof attempt.said === 'string' && attempt.said !== '') return attempt.said
+      // A carried reading comes before the count, not after it: the number below is the one a
+      // minute ago bought, and introducing it as the upstream's answer would be the same lie the
+      // "answered but brought back no number" sentence told, only quieter.
+      var carrier =
+        attempt.carried === true && typeof attempt.atMs === 'number' && isFinite(attempt.atMs)
+          ? SETTINGS.carried
+          : ''
       var usage = attempt.usage
       if (usage === undefined || usage === null) return SETTINGS.reached
       var used = usage.dailyUsedPts
@@ -259,7 +271,14 @@ window.__ModuleLoader__.load({
       if (limit === undefined || limit === null) return SETTINGS.reached
       // pts are pts (docs/02 section 1.3), not dollars: the field names say _usd and that is a trap
       // this line has to avoid, not repeat.
-      return SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts'
+      //
+      // Where the key lives is said only when the host named a layer and only on a reading we
+      // just took: "stored here" is a fact about the key, and it is not news once a number is.
+      var where =
+        carrier !== '' || typeof attempt.layer !== 'string'
+          ? ''
+          : SETTINGS.livesIn + layerWord(attempt.layer)
+      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts' + where
     }
 
     /**
@@ -563,12 +582,7 @@ window.__ModuleLoader__.load({
         key.setDraft(event.currentTarget.value)
       }
 
-      const where =
-        state.reading === 'unread'
-          ? SETTINGS.unread
-          : state.present
-            ? SETTINGS.stored + (state.layer === undefined ? '' : SETTINGS.inLayer + layerWord(state.layer))
-            : SETTINGS.notStored
+      const where = whereOf(state)
 
       return React.createElement(
         'div',
@@ -630,6 +644,20 @@ window.__ModuleLoader__.load({
     // The host's sentence for one upstream read, kept out of useKeySection so the factory can
     // hand it to the loader test: a wrong endpoint here is invisible to every other test -- every
     // one of them injects a fake host that agrees with whatever URL it is given.
+    /**
+     * Where the key lives, in one line -- or that it is there and the layer was not named.
+     *
+     * Three states, and the third is not a miss: a key whose layer nobody reported still outlives
+     * this terminal, so that is the sentence with an answer in it. Only the layer form needs a word
+     * the seam supplied.
+     */
+    function whereOf(read) {
+      if (read.reading === 'unread') return SETTINGS.unread
+      if (read.present !== true) return SETTINGS.notStored
+      if (read.layer === undefined) return SETTINGS.stored + SETTINGS.staying
+      return SETTINGS.stored + SETTINGS.inLayer + layerWord(read.layer)
+    }
+
     function useKeySection() {
       // The page never learns the key. describe() answers whether one is configured, and the
       // layer it came from; that is the whole vocabulary this section has for "is it there".
@@ -947,6 +975,7 @@ window.__ModuleLoader__.load({
       viewOf: viewOf,
       testOf: testOf,
       sentenceOf: sentenceOf,
+      whereOf: whereOf,
     }
   },
 })

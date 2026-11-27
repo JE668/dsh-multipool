@@ -128,6 +128,15 @@ export interface UsageAttempt {
    * print it as a fresh number (docs/07 U-06).
    */
   readonly carried?: boolean
+  /**
+   * Which layer the key was found in, when the seam named one.
+   *
+   * Only the seam knows, and it only answers on the read that found the key -- so the layer has
+   * to travel on the reading or it cannot be shown at all without a second request for a fact
+   * the first one already had. Absent when nothing is stored, or when the seam declined to name
+   * a layer: an unnamed layer is not a guessable one (key-store.ts:94).
+   */
+  readonly layer?: string
 }
 
 /**
@@ -147,6 +156,8 @@ export async function readAmdUsage(args: {
   readonly lastAttemptMs?: number
   readonly previous?: UsageResult
   readonly timeoutMs?: number
+  /** The layer the seam resolved the key in, if it named one. Travels out on the attempt. */
+  readonly layer?: string
 }): Promise<UsageAttempt> {
   if (args.lastAttemptMs !== undefined && args.nowMs - args.lastAttemptMs < USAGE_POLL_FLOOR_MS) {
     // The floor is not a refusal any more (T-2-f): pressing again inside the minute answers with
@@ -164,6 +175,7 @@ export async function readAmdUsage(args: {
     return {
       providerId: args.providerId,
       usage: args.previous,
+      ...(args.layer === undefined ? {} : { layer: args.layer }),
       // Carried, and it says so: the number on screen is real, the request behind it is not new.
       // A form that printed this as a fresh reading would turn one request into two in the reader's
       // head, which is the only currency docs/04 budgets in.
@@ -188,6 +200,16 @@ export async function readAmdUsage(args: {
   }
 
   const url = base.replace(/\/$/, '') + USAGE_PATH
+  // Where the key actually lives, asked beside it: resolve() can answer from the process environment
+  // even when nothing is in the store, and the layer argument is what the caller last heard -- old
+  // enough for that answer to have moved. Best-effort: a describe() that throws or names no layer
+  // leaves it unknown, and unknown is a state this attempt is allowed to be in.
+  let layer: string | undefined = args.layer
+  const holder = args.seam
+  if (holder !== undefined && typeof holder.describe === 'function') {
+    const info = await holder.describe(args.reference).catch(() => undefined)
+    if (info !== undefined && info !== null && typeof info.source === 'string') layer = info.source
+  }
   let frame: UsageFrame
   try {
     frame = await wire(url)
@@ -223,7 +245,14 @@ export async function readAmdUsage(args: {
       tooSoon: false,
     }
   }
-  return { providerId: args.providerId, usage, said: '', atMs: args.nowMs, tooSoon: false }
+  return {
+    providerId: args.providerId,
+    usage,
+    said: '',
+    atMs: args.nowMs,
+    tooSoon: false,
+    layer,
+  }
 }
 
 /** Put one reading into the map the snapshot reads, or take the provider's entry out. */

@@ -65,6 +65,15 @@ export interface UsageAttempt {
      * print it as a fresh number (docs/07 U-06).
      */
     readonly carried?: boolean;
+    /**
+     * Which layer the key was found in, when the seam named one.
+     *
+     * Only the seam knows, and it only answers on the read that found the key -- so the layer has
+     * to travel on the reading or it cannot be shown at all without a second request for a fact
+     * the first one already had. Absent when nothing is stored, or when the seam declined to name
+     * a layer: an unnamed layer is not a guessable one (key-store.ts:94).
+     */
+    readonly layer?: string;
 }
 /**
  * Fetch the account's usage once, and say what happened in words a form can print.
@@ -83,6 +92,8 @@ export declare function readAmdUsage(args: {
     readonly lastAttemptMs?: number;
     readonly previous?: UsageResult;
     readonly timeoutMs?: number;
+    /** The layer the seam resolved the key in, if it named one. Travels out on the attempt. */
+    readonly layer?: string;
 }): Promise<UsageAttempt>;
 /** Put one reading into the map the snapshot reads, or take the provider's entry out. */
 export declare function withProviderUsage(usage: Readonly<Partial<Record<string, UsageResult | null>>> | undefined, providerId: string, reading: UsageResult | null): Readonly<Partial<Record<string, UsageResult | null>>>;

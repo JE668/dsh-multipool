@@ -264,6 +264,11 @@ async function readSeamNow(
   if (accounts === undefined) return false
   facts.accounts = accounts
   facts.keyLayer = status.state.kind === 'configured' ? status.state.layer : undefined
+  if (status.state.kind !== 'configured') return false
+  // Was there a key, or did the question fail? accountFrom() answers [] for `absent` -- "there is
+  // no key" is a reading, and the settings page is right to print it -- but a request needs a
+  // value, so a missing key is not a successful ask. The seam's own sentence still reaches the
+  // page through onRead above; this line only decides whether the test endpoint got a reading.
   if (onRead !== undefined) onRead(status)
   return true
 }
@@ -294,6 +299,9 @@ async function askUsage(
     nowMs: nowMs(),
     ...(lastAttemptMs() === undefined ? {} : { lastAttemptMs: lastAttemptMs() as number }),
     ...(facts?.usage?.[providerId] === undefined ? {} : { previous: facts.usage[providerId] as UsageResult }),
+    // The layer comes from the seam's own answer, resolved beside the key: it is a fact about
+    // where the reading was taken from, and the page may only name it on a reading that is new.
+    ...(facts?.keyLayer === undefined ? {} : { layer: facts.keyLayer }),
   })
   if (!attempt.tooSoon) stamp(attempt.atMs)
   if (facts !== undefined && attempt.usage !== null) {

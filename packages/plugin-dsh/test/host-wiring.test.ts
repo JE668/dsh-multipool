@@ -362,6 +362,12 @@ describe('the route the page actually reaches', () => {
     // anything the plugin invented would show up on the wrong side of that boundary.
     const { context, effects, seam } = contextOf({ hasInject: true })
     const server = new FakeServer()
+    // A clock this test owns: the minute between two presses is a fact about wall time, not
+    // about what is being tested. Moving it forward is the same door the host uses -- there is no
+    // reset hook here, and a test that needed one would be testing a path production cannot run.
+    let now = 1_800_000_000_000
+    const realNow = Date.now
+    Date.now = () => now
     seam.resolve = async () => ({ value: 'rc-a-key-from-the-store', source: 'file' })
     const realFetch = globalThis.fetch
     const frames: Array<{ url: string; init: { method: string; headers: Record<string, string> } }> = []
@@ -377,7 +383,11 @@ describe('the route the page actually reaches', () => {
       apply(context, { server })
       for (const effect of effects) effect()
       const answered = (await server.ask(ENDPOINT_TEST, undefined)) as {
-        value: { said: string; usage: { dailyUsedPts: { value: number } } | null }
+        value: {
+          said: string
+          layer?: string
+          usage: { dailyUsedPts: { value: number } } | null
+        }
       }
       expect(frames).toHaveLength(1)
       expect(frames[0]?.init.method).toBe('GET')
@@ -386,12 +396,25 @@ describe('the route the page actually reaches', () => {
       expect(answered.value.usage?.dailyUsedPts.value).toBe(0.5)
       // Nothing on the way back out repeats the key: not the sentence, not the reading.
       expect(JSON.stringify(answered)).not.toContain('rc-a-key-from-the-store')
+      // The layer the key lives in rides on the reading, so the form can name it without a second
+      // request; moving the clock is what makes this a second question at all, since inside the
+      // minute the floor answers with the first reading and asks upstream nothing.
+      seam.resolve = async () => ({ value: 'rc-a-key-from-the-store', source: 'env' })
+      seam.describe = async () => ({ configured: true, source: 'env', writable: true })
+      now += 61_000
+      const named = (await server.ask(ENDPOINT_TEST, undefined)) as {
+        value: { said: string; layer?: string; usage: unknown }
+      }
+      expect(named.value.layer).toBe('env')
       // A reading is a complete answer: `said` is for the cases where the number is missing, and an
       // empty string here is what lets the page print its own "upstream answered: <used> / <limit>"
       // instead of a sentence that contradicts the number sitting beside it.
-      expect(answered.value.said).toBe('')
+      expect(named.value.said).toBe('')
+      // And the seam still holds the only copy.
+      expect(JSON.stringify(named)).not.toContain('rc-a-key-from-the-store')
     } finally {
       globalThis.fetch = realFetch
+      Date.now = realNow
     }
   })
 
