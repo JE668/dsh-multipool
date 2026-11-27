@@ -196,9 +196,7 @@ window.__ModuleLoader__.load({
       reading: '\u4e0a\u6e38\u56de\u7b54\uff1a',
       // Said after a bare count only when the layer is known, and after a carried count always:
       // the first reading the reader did not watch arrive, they only saw where it landed.
-      livesIn: '\uff0c\u5b58\u5728',
       carried: '\u2014\u7231\u7528\u4e0a\u4e00\u6b21\u8bfb\u6570\uff08\u4e00\u5206\u949f\u5185\u53ea\u95ee\u4e00\u6b21\uff09',
-      staying: '\uff0c\u6362\u7ec8\u7aef\u3001\u91cd\u88c5\u73af\u5883\u90fd\u8fd8\u5728',
       // The third sentence, for "the host answered nothing at all" -- a dead route, not a dead key.
       unreachable: '\u6ca1\u6709\u6536\u5230\u4e0a\u6e38\u7684\u56de\u7b54',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
@@ -272,13 +270,10 @@ window.__ModuleLoader__.load({
       // pts are pts (docs/02 section 1.3), not dollars: the field names say _usd and that is a trap
       // this line has to avoid, not repeat.
       //
-      // Where the key lives is said only when the host named a layer and only on a reading we
-      // just took: "stored here" is a fact about the key, and it is not news once a number is.
-      var where =
-        carrier !== '' || typeof attempt.layer !== 'string'
-          ? ''
-          : SETTINGS.livesIn + layerWord(attempt.layer)
-      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts' + where
+      // The layer is not appended here. The where line already carries where the key lives, and a
+      // second telling after the number reads as a fact about the number -- "0.59 pts, in the config
+      // file" -- which is the one thing a reading of the number must not imply.
+      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts'
     }
 
     /**
@@ -645,16 +640,16 @@ window.__ModuleLoader__.load({
     // hand it to the loader test: a wrong endpoint here is invisible to every other test -- every
     // one of them injects a fake host that agrees with whatever URL it is given.
     /**
-     * Where the key lives, in one line -- or that it is there and the layer was not named.
+     * Where the key lives, in one line, and only in the words the host supplied.
      *
-     * Three states, and the third is not a miss: a key whose layer nobody reported still outlives
-     * this terminal, so that is the sentence with an answer in it. Only the layer form needs a word
-     * the seam supplied.
+     * Three states, and the third says the least on purpose: a key whose layer nobody reported is a
+     * key that exists. Writing "survives the terminal" from that would be this page asserting
+     * something about the store it was never told -- absence is not a licence to infer.
      */
     function whereOf(read) {
       if (read.reading === 'unread') return SETTINGS.unread
       if (read.present !== true) return SETTINGS.notStored
-      if (read.layer === undefined) return SETTINGS.stored + SETTINGS.staying
+      if (read.layer === undefined) return SETTINGS.stored
       return SETTINGS.stored + SETTINGS.inLayer + layerWord(read.layer)
     }
 

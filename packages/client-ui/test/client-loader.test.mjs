@@ -325,40 +325,36 @@ test('a reading leads with its own sentence, not with the one for a missing numb
   assert.doesNotMatch(answered, /\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57/)
 })
 
-test('a reading the floor stopped asking for says so before it says how much', () => {
+test('the reading line carries no word about where the key is kept', () => {
   const plugin = factory()
-  const reading = { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.2, source: 'api' } }
-  const carried = plugin.sentenceOf({
-    providerId: 'amd',
-    said: 'carried from the read made less than a minute ago',
-    atMs: 2,
-    tooSoon: false,
-    carried: true,
-    usage: reading,
-  })
-  // "carried" is the host's word, and it is the upstream's own sentence about it: it is printed as
-  // given, which is why the host gets to be the one that explains it.
-  assert.equal(carried, 'carried from the read made less than a minute ago')
-  const bare = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 2, tooSoon: false, carried: true, usage: reading })
-  assert.match(bare, /^\u2014\u7231\u7528\u4e0a\u4e00\u6b21\u8bfb\u6570/)
-  assert.match(bare, /0\.2 \/ 1 pts/)
+  const reading = { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.59, source: 'api' } }
+  // Handing the attempt a layer is the case that tempted the append: the reading already knows
+  // enough to say where the key is, so it says it right after the number. Two facts, one line,
+  // and the result reads as a fact about the number.
+  const named = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 1, tooSoon: false, layer: 'file', usage: reading })
+  assert.equal(named, '\u4e0a\u6e38\u56de\u7b54\uff1a 0.59 / 1 pts')
+  assert.doesNotMatch(named, /\u914d\u7f6e\u6587\u4ef6/)
 })
 
-test('the layer is named on a fresh reading only when the host named one', () => {
+test('a key with no reported layer is called present, not called any particular place', () => {
   const plugin = factory()
-  const reading = { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.2, source: 'api' } }
-  const named = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 1, tooSoon: false, layer: 'env', usage: reading })
-  assert.match(named, /\u5b58\u5728\u73af\u5883\u53d8\u91cf/)
-  const unnamed = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 1, tooSoon: false, usage: reading })
-  assert.doesNotMatch(unnamed, /\u5b58\u5728/)
-})
-
-test('a stored key says it survives the terminal, which is the question it is asked', () => {
-  const plugin = factory()
-  const named = plugin.whereOf({ reading: 'read', present: true, layer: undefined })
-  // The host reported a key but named no layer. That is not a miss to leave blank: a stored key
-  // outlives the terminal it was typed into, and that is the sentence with an answer in it.
-  assert.match(named, /\u6362\u7ec8\u7aef/)
+  // The host said there is a key, and stopped there. Finishing its sentence for it -- "survives
+  // the terminal", "in the config file" -- is this page asserting what it was never told, so it
+  // asserts the one word it received.
+  assert.equal(
+    plugin.whereOf({ reading: 'read', present: true, layer: undefined }),
+    '\u5df2\u5b58\u5728\u672c\u673a',
+  )
+  // And a layer the host did name is repeated, not translated into a guess.
+  assert.equal(
+    plugin.whereOf({ reading: 'read', present: true, layer: 'file' }),
+    '\u5df2\u5b58\u5728\u672c\u673a\uff08\u914d\u7f6e\u6587\u4ef6\uff09',
+  )
+  // An unread section says it has not looked, which is a different sentence from "not there".
+  assert.equal(
+    plugin.whereOf({ reading: 'unread', present: false, layer: undefined }),
+    '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
+  )
 })
 
 test('a page with no window at all is a host too old, not a save that failed', async () => {
