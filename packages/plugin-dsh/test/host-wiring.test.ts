@@ -335,10 +335,9 @@ describe('the route the page actually reaches', () => {
     const { context, effects, server } = contextOf({ hasInject: true })
     apply(context, { server })
     for (const effect of effects) effect()
-    // This install has a seam and nothing to ask through it, so the host answers with a sentence
-    // rather than a refusal: readAmdUsage() says "this credential service cannot make requests"
-    // and the attempt travels back under ok: true. That is the whole assertion --
-    // the route reached a source. The first draft of this test expected ok:false and the code
+    // This install has a seam and nothing stored for it, so the host answers with a sentence
+    // rather than a refusal -- "no AMD_API_KEY is stored, so there was nothing to send" -- and the
+    // attempt travels back under ok: true. That is the whole assertion: the route reached a source. The first draft of this test expected ok:false and the code
     // NO_TEST_SEAM, which is the shape of the bug, not of the fix: it went red the first time it
     // ran and the temptation was to un-wire testUsage to make it green. The red was the test.
     const answered = (await server.ask(ENDPOINT_TEST, undefined)) as {
@@ -387,6 +386,10 @@ describe('the route the page actually reaches', () => {
       expect(answered.value.usage?.dailyUsedPts.value).toBe(0.5)
       // Nothing on the way back out repeats the key: not the sentence, not the reading.
       expect(JSON.stringify(answered)).not.toContain('rc-a-key-from-the-store')
+      // A reading is a complete answer: `said` is for the cases where the number is missing, and an
+      // empty string here is what lets the page print its own "upstream answered: <used> / <limit>"
+      // instead of a sentence that contradicts the number sitting beside it.
+      expect(answered.value.said).toBe('')
     } finally {
       globalThis.fetch = realFetch
     }

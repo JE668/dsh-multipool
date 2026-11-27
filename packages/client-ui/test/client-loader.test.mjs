@@ -270,6 +270,46 @@ test('paints what the host computed instead of computing it again', () => {
     assert.deepEqual(view.lines, answered.lines)
   })
 })
+test('a reading is printed in two decimals, under a sentence that does not deny it', () => {
+  // What the real host answered on 2026-11-27: the full float, because JSON carries the float its
+  // parser built. The page had printed all of it beside a sentence saying no number came back.
+  const plugin = factory()
+  const answered = plugin.sentenceOf({
+    providerId: 'amd',
+    said: '',
+    atMs: 1,
+    tooSoon: false,
+    usage: {
+      available: true,
+      rpmLimit: { value: 20, source: 'api' },
+      dailyLimitPts: { value: 1, source: 'api' },
+      dailyUsedPts: { value: 0.19718791934428737, source: 'api' },
+      dailyRemainingPts: { value: 0.8028120806557127, source: 'api' },
+      fetchedAt: '2026-11-27T04:06:00Z',
+    },
+  })
+  assert.match(answered, /0\.2 \/ 1 pts/)
+  assert.doesNotMatch(answered, /0\.19718791934428737/)
+  assert.doesNotMatch(answered, /\u2014/)
+})
+
+test('a whole number does not grow decimals it did not need', () => {
+  const plugin = factory()
+  const answered = plugin.sentenceOf({
+    providerId: 'amd',
+    said: '',
+    atMs: 1,
+    tooSoon: false,
+    usage: {
+      available: true,
+      dailyLimitPts: { value: 20, source: 'api' },
+      dailyUsedPts: { value: 5, source: 'api' },
+      fetchedAt: '2026-11-27T04:06:00Z',
+    },
+  })
+  assert.match(answered, /5 \/ 20 pts/)
+})
+
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })

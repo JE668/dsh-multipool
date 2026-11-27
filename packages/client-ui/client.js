@@ -193,6 +193,7 @@ window.__ModuleLoader__.load({
       // answered with nothing this page may read.
       tooSoon: '\u4e0a\u4e00\u6b21\u8bf7\u6c42\u8fd8\u4e0d\u5230\u4e00\u5206\u949f\uff0c\u8fd9\u6b21\u6ca1\u53d1\uff08\u4e0a\u6e38\u9650\u4e00\u5206\u949f\u4e00\u6b21\uff09',
       reached: '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57',
+      reading: '\u4e0a\u6e38\u56de\u7b54\uff1a',
       // The third sentence, for "the host answered nothing at all" -- a dead route, not a dead key.
       unreachable: '\u6ca1\u6709\u6536\u5230\u4e0a\u6e38\u7684\u56de\u7b54',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
@@ -258,7 +259,21 @@ window.__ModuleLoader__.load({
       if (limit === undefined || limit === null) return SETTINGS.reached
       // pts are pts (docs/02 section 1.3), not dollars: the field names say _usd and that is a trap
       // this line has to avoid, not repeat.
-      return SETTINGS.reached + ' ' + String(used.value) + ' / ' + String(limit.value) + ' pts'
+      return SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts'
+    }
+
+    /**
+     * One number, as a person reads it (docs/05 section 2.3).
+     *
+     * The upstream answers 0.19718791934428737 because it is a float, not because it is that
+     * precise; printing every digit it happened to carry is a claim about accuracy nobody made.
+     * Two decimals is where the upstream's own USD figure stops meaning anything, and trailing
+     * zeros are dropped so that 0.50 does not read as a finer measurement than 0.5.
+     */
+    function ptsOf(value) {
+      if (typeof value !== 'number' || !isFinite(value)) return String(value)
+      var fixed = value.toFixed(2)
+      return fixed.replace(/\.?0+$/, '') || '0'
     }
 
     /** The sentence the test button prints: the host's, or this page's for a host that is not there. */
@@ -931,6 +946,7 @@ window.__ModuleLoader__.load({
       commandOf: commandOf,
       viewOf: viewOf,
       testOf: testOf,
+      sentenceOf: sentenceOf,
     }
   },
 })
