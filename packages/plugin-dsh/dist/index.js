@@ -238,11 +238,11 @@ export function apply(ctx, options = {}) {
                 const webServer = child.webServer;
                 if (webServer === undefined)
                     return;
-                drops.push(serveOn(webServer, channel));
+                drops.push(serveOn(webServer, channel, channel.source));
             }));
         }
         else {
-            drops.push(serveOn(server, channel));
+            drops.push(serveOn(server, channel, channel.source));
         }
         // Asked for unconditionally, which is the point of T-2-b's last leg. This injection used to be
         // armed only when a reader or a writer had been handed in, and an install the user merely enabled

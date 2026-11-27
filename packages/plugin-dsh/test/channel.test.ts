@@ -7,6 +7,7 @@ import {
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
   ENDPOINT_TEST,
+  NO_TEST_SEAM,
   NO_TEST_SOURCE,
   answerOf,
   openChannel,
@@ -289,11 +290,23 @@ describe('the test endpoint, which is not a command', () => {
     expect(asked).toEqual(['nim', 'amd'])
   })
 
-  it('refuses by name when no source can be asked', async () => {
-    const answer = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
-    const refused = (await answer(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
-    expect(refused.ok).toBe(false)
-    expect(refused.error?.code).toBe(NO_TEST_SOURCE)
+  it('says which of the two refusals it is, because they have different fixes', async () => {
+    // A source with nobody in it to ask: the wiring dropped testUsage on the floor. This is the bug
+    // the screen reported as "cannot ask an upstream" for a whole round while the real cause was this
+    // one -- the source existed, the method did not.
+    const wired = answerOf(
+      openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }),
+      sourceOf([]),
+    )
+    const silent = (await wired(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
+    expect(silent.ok).toBe(false)
+    expect(silent.error?.code).toBe(NO_TEST_SEAM)
+
+    // No source at all: the handle was opened without one, and no wiring can rescue that.
+    const bare = answerOf(openChannel({ source: sourceOf([]), budget: BUDGET, pointsProviderId: null }))
+    const nothing = (await bare(ENDPOINT_TEST, {})) as { ok: boolean; error?: { code: string } }
+    expect(nothing.ok).toBe(false)
+    expect(nothing.error?.code).toBe(NO_TEST_SOURCE)
   })
 })
 

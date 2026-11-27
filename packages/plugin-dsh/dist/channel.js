@@ -74,8 +74,17 @@ export const ENDPOINT_TEST = 'test';
  * which today is the only provider with a usage endpoint.
  */
 export const TEST_PROVIDER = 'providerId';
-/** Refused because this host was built without anything that can reach an upstream. */
+/**
+ * Refused because this host was built without anything that can reach an upstream.
+ *
+ * Two codes, not one, because one sentence had been standing in for two different bugs: the page
+ * was asking nobody (no ChannelSource reached answerOf, or it had no testUsage), and the page was
+ * asking somebody who had no credential service to lend. The first is a wiring bug, the second is a
+ * DSH build that provides no credentials -- and until they were separated, both printed identical words.
+ */
 export const NO_TEST_SOURCE = 'multipool/no-upstream';
+/** Refused because the source exists and is wired, but it holds no seam to spend. */
+export const NO_TEST_SEAM = 'multipool/no-credential-seam';
 /** The ref this plugin stores its one key under; the form's field is named after it. */
 export const AMD_KEY_REF_NAME = 'AMD_API_KEY';
 /** Refused because the name is not one of the two; nothing was attempted. */
@@ -168,6 +177,7 @@ export function openChannel(options) {
     let closed = false;
     const build = () => buildPublishedView(options.source, options.budget, pointsProviderId);
     return {
+        source: options.source,
         command(request) {
             return dispatch(request, writes, () => closed);
         },
@@ -233,6 +243,19 @@ export function answerOf(handle, source) {
             return { ok: true, value: await source.testUsage(providerId) };
         }
         if (endpoint === ENDPOINT_TEST) {
+            // Reached only when the wiring above declined to match. Which of the two it was is the whole
+            // difference between a mistake in this file and a shape of the running install, so it is not
+            // flattened into one sentence: a source that is there but silent means its testUsage was never
+            // attached (a wiring bug); no source at all means this handle was opened without one.
+            if (source !== undefined) {
+                return {
+                    ok: false,
+                    error: {
+                        code: NO_TEST_SEAM,
+                        message: 'this host has a source but no one in it can ask an upstream',
+                    },
+                };
+            }
             return {
                 ok: false,
                 error: { code: NO_TEST_SOURCE, message: 'this host cannot ask an upstream anything' },

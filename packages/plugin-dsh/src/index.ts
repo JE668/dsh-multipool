@@ -347,10 +347,10 @@ export function apply(
       drops.push(injectOf(ctx, [WEB_SERVER_SERVICE], child => {
         const webServer = child.webServer
         if (webServer === undefined) return
-        drops.push(serveOn(webServer, channel))
+        drops.push(serveOn(webServer, channel, channel.source))
       }))
     } else {
-      drops.push(serveOn(server, channel))
+      drops.push(serveOn(server, channel, channel.source))
     }
 
     // Asked for unconditionally, which is the point of T-2-b's last leg. This injection used to be

@@ -4,6 +4,8 @@ import {
   CHANNEL,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
+  ENDPOINT_TEST,
+  NO_TEST_SOURCE,
   type BridgeRequest,
   type BridgeResponse,
   type Channel,
@@ -14,6 +16,9 @@ import { KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
 import { apply } from '../src/index.js'
 
 type Listener = (moved: unknown) => void
+
+/** The em dash the icon paints when it has no count, written as an escape so this file is ASCII. */
+const NO_VALUE_BADGE = '\u2014/\u2014'
 
 interface FakeSeam {
   resolve(ref: string): Promise<undefined>
@@ -204,7 +209,7 @@ describe('the host half asks the seam only when somebody is reading the answer',
     expect(answered.ok).toBe(true)
     // The pool was never counted, so the badge must not say 0/0: dashes and an idle ring.
     expect(answered.value.reading).toBe('unread')
-    expect(answered.value.view.badge).toBe('—/—')
+    expect(answered.value.view.badge).toBe(NO_VALUE_BADGE)
     expect(answered.value.view.level).toBe('idle')
     for (const dispose of disposers) dispose()
   })
@@ -309,6 +314,35 @@ describe('the route is claimed where it is asked, and only for a POST', () => {
     expect(status).toBe(400)
     expect(written).toBe('request body is not JSON' + String.fromCharCode(10))
     for (const dispose of disposers) dispose()
+  })
+})
+
+// The gap this guards: apply() built a source, openChannel() kept it alive only for the icon, and
+// serveOn() was called with two arguments -- so the route existed with no source behind it, the test
+// endpoint refused every press, and every unit test stayed green, because a test passes the source
+// itself. A test that hands in what production forgets cannot watch production forget it, so this one
+// goes the whole way: apply() -> a route the page can reach -> the test endpoint.
+describe('the route the page actually reaches', () => {
+  it('answers the test endpoint with a source, because apply() hands one to the route', async () => {
+    const { context, effects, server } = contextOf({ hasInject: true })
+    apply(context, { server })
+    for (const effect of effects) effect()
+    // This install has a seam and nothing to ask through it, so the host answers with a sentence
+    // rather than a refusal: readAmdUsage() says "this credential service cannot make requests"
+    // and the attempt travels back under ok: true. That is the whole assertion --
+    // the route reached a source. The first draft of this test expected ok:false and the code
+    // NO_TEST_SEAM, which is the shape of the bug, not of the fix: it went red the first time it
+    // ran and the temptation was to un-wire testUsage to make it green. The red was the test.
+    const answered = (await server.ask(ENDPOINT_TEST, undefined)) as {
+      ok: boolean
+      value?: { said?: string; usage?: unknown }
+      error?: { code: string }
+    }
+    expect(answered.error).toBeUndefined()
+    expect(answered.ok).toBe(true)
+    expect(typeof answered.value?.said).toBe('string')
+    // Non-empty: the host did not merely have a source, it asked it and got a sentence back.
+    expect((answered.value?.said ?? '') as string).not.toBe('')
   })
 })
 

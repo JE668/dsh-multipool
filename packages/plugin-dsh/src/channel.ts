@@ -100,8 +100,17 @@ export const ENDPOINT_TEST = 'test'
  * which today is the only provider with a usage endpoint.
  */
 export const TEST_PROVIDER = 'providerId'
-/** Refused because this host was built without anything that can reach an upstream. */
+/**
+ * Refused because this host was built without anything that can reach an upstream.
+ *
+ * Two codes, not one, because one sentence had been standing in for two different bugs: the page
+ * was asking nobody (no ChannelSource reached answerOf, or it had no testUsage), and the page was
+ * asking somebody who had no credential service to lend. The first is a wiring bug, the second is a
+ * DSH build that provides no credentials -- and until they were separated, both printed identical words.
+ */
 export const NO_TEST_SOURCE = 'multipool/no-upstream'
+/** Refused because the source exists and is wired, but it holds no seam to spend. */
+export const NO_TEST_SEAM = 'multipool/no-credential-seam'
 
 /**
  * What the browser half asks for. A page POSTs to CHANNEL/<endpoint> and reads the answer as JSON.
@@ -263,6 +272,16 @@ export interface ChannelHandle {
   readonly published: () => PublishedView | null
   readonly isPublished: () => boolean
   readonly command: (request: unknown) => Promise<CommandOutcome>
+  /**
+   * The source this handle was opened over, handed back so the route can be wired with it.
+   *
+   * It travels here rather than being passed alongside `openChannel({ source })` because the two
+   * used to be separate arguments at separate call sites, and the second one was forgotten: the
+   * route was registered without a source, so the test endpoint refused every press with "this host
+   * cannot ask an upstream" while the host was in fact asking one every five seconds for the icon.
+   * One object, one path -- the route takes the handle and reads the source off it.
+   */
+  readonly source: ChannelSource
   /** Attach the write half once the credential seam resolves. */
   readonly offer: (writes: ChannelWrites) => void
   /** Forget the last view. The channel is dead afterwards. */
@@ -365,6 +384,7 @@ export function openChannel(options: OpenChannelOptions): ChannelHandle {
   const build = (): PublishedView => buildPublishedView(options.source, options.budget, pointsProviderId)
 
   return {
+    source: options.source,
     command(request: unknown): Promise<CommandOutcome> {
       return dispatch(request, writes, () => closed)
     },
@@ -435,6 +455,19 @@ export function answerOf(
       return { ok: true as const, value: await source.testUsage(providerId as ProviderId) }
     }
     if (endpoint === ENDPOINT_TEST) {
+      // Reached only when the wiring above declined to match. Which of the two it was is the whole
+      // difference between a mistake in this file and a shape of the running install, so it is not
+      // flattened into one sentence: a source that is there but silent means its testUsage was never
+      // attached (a wiring bug); no source at all means this handle was opened without one.
+      if (source !== undefined) {
+        return {
+          ok: false as const,
+          error: {
+            code: NO_TEST_SEAM,
+            message: 'this host has a source but no one in it can ask an upstream',
+          },
+        }
+      }
       return {
         ok: false as const,
         error: { code: NO_TEST_SOURCE, message: 'this host cannot ask an upstream anything' },
