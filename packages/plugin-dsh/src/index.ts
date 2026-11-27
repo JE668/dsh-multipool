@@ -290,6 +290,7 @@ async function askUsage(
   const attempt = await readAmdUsage({
     providerId,
     seam,
+    reference: AMD_KEY_REF_NAME,
     nowMs: nowMs(),
     ...(lastAttemptMs() === undefined ? {} : { lastAttemptMs: lastAttemptMs() as number }),
     ...(facts?.usage?.[providerId] === undefined ? {} : { previous: facts.usage[providerId] as UsageResult }),

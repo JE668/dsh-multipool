@@ -14,29 +14,71 @@
  * there is no cadence to fold into a budget -- only a person's click, which the 60-second floor in
  * core/amd-usage.ts already bounds.
  *
- * The key itself never appears in this file's answers or in its errors: the seam is asked to make
- * the request, and the sentences that leave here are this module's own.
+ * Who sends it: this process, not the seam. `ctx.credentials` answers four questions -- resolve,
+ * describe, set, unset -- and sending a request is not one of them. For one round this file asked
+ * `seam.fetch` and a missing member was read as "the host cannot ask", which was a sentence about
+ * our own wish dressed as a fact about DSH. `resolve` answers the value; attaching it is this
+ * module's job, and the whole job ends inside `sendOnce` below: nothing here logs, stores, or
+ * reports the value, and the sentences that leave carry the status line instead.
  */
 import { USAGE_POLL_FLOOR_MS, parseUsageResponse, PROVIDER_BASE_URLS, scrubSecrets, } from './vendor/core/index.js';
 /** Where the upstream usage reading answers, and how it is spelled when it does not. */
 export const USAGE_PATH = '/usage?include_recent=true';
+/** Wait no longer than this for the upstream; a form must not hang on a stalled socket. */
+export const USAGE_TIMEOUT_MS = 15000;
 /**
- * Make the request the seam can make, or nothing when it cannot make one.
+ * Send one GET to `url` with `Authorization: Bearer <key>`, and hand back only the frame.
  *
- * The seam is whatever `dsh-credentials-localhid` hands over; its `fetch` does the sending, the
- * credential header, and the proxy. This module does not know how the key is attached and must not
- * learn: a transport that took the key as a string would be a second place the key exists, and the
- * first rule of this repo is that there is one.
+ * The key is a parameter here and nowhere else: it is not returned, not logged, and not put into
+ * the thrown error -- an HTTP client that quotes the request headers in a failure message would
+ * turn a network fault into a key leak, so the catch below rebuilds the sentence from the URL alone
+ * (scrubbed) and says nothing about what was attached.
+ *
+ * `fetch` is looked up per call rather than captured at import: Node 18+ exposes it globally, replied,
+ * and a test replaces `globalThis.fetch` to answer without a socket.
  */
-export function usageWire(seam) {
+async function sendOnce(url, key, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { authorization: 'Bearer ' + key, accept: 'application/json' },
+            signal: controller.signal,
+        });
+        const body = await response.text();
+        return { status: response.status, body };
+    }
+    catch (error) {
+        // Abort and transport faults merge into one sentence on purpose: from the form both mean
+        // "nothing came back", and the URL is the only part of this that is safe to repeat.
+        const reason = controller.signal.aborted ? 'timed out after ' + String(timeoutMs) + 'ms' : 'no answer';
+        throw new Error(reason + ' from ' + scrubSecrets(url.replace(/\?.*$/, '')));
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+/**
+ * How one provider's usage read travels: ask the seam for the value, then send it.
+ *
+ * Three failures stay three sentences, because they have three different fixes:
+ *   - no seam at all: this DSH composed no credential provider (nothing to fill in);
+ *   - seam says nothing is stored: the value is missing, not the transport (fill the field);
+ *   - seam throws: the store itself is unwell, and its own words are scrubbed and passed through.
+ * A seam that answers `undefined` is a reading too -- "absent" is what `keyStateOf` calls it -- and
+ * saying "cannot make requests" for it would send the reader to look for the wrong problem.
+ */
+export function usageWire(seam, reference, timeoutMs) {
     if (seam === undefined)
         return undefined;
-    const send = seam.fetch;
-    if (send === undefined)
-        return undefined;
     return async (url) => {
-        const response = await send(url, { method: 'GET' });
-        return { status: response.status, body: await response.text() };
+        const stored = await seam.resolve(reference);
+        if (stored === undefined) {
+            throw new Error('no ' + reference + ' is stored, so there was nothing to send');
+        }
+        const frame = await sendOnce(url, stored.value, timeoutMs);
+        return { status: frame.status, body: frame.body };
     };
 }
 /**
@@ -48,26 +90,42 @@ export function usageWire(seam) {
  * the icon's dashes were: one glyph for five things.
  */
 export async function readAmdUsage(args) {
-    const tooSoon = {
-        providerId: args.providerId,
-        usage: null,
-        said: '',
-        atMs: args.nowMs,
-        tooSoon: true,
-    };
     if (args.lastAttemptMs !== undefined && args.nowMs - args.lastAttemptMs < USAGE_POLL_FLOOR_MS) {
-        return tooSoon;
+        // The floor is not a refusal any more (T-2-f): pressing again inside the minute answers with
+        // the reading that minute already bought, and one sentence that says where it came from. Two
+        // identical presses then read as one number twice instead of as a button that stopped working.
+        if (args.previous === undefined) {
+            return {
+                providerId: args.providerId,
+                usage: null,
+                said: 'the previous read is less than a minute old, and the upstream allows one a minute',
+                atMs: args.nowMs,
+                tooSoon: true,
+            };
+        }
+        return {
+            providerId: args.providerId,
+            usage: args.previous,
+            // Carried, and it says so: the number on screen is real, the request behind it is not new.
+            // A form that printed this as a fresh reading would turn one request into two in the reader's
+            // head, which is the only currency docs/04 budgets in.
+            said: 'carried from the read made less than a minute ago',
+            atMs: args.nowMs,
+            tooSoon: false,
+            carried: true,
+        };
     }
     const base = args.baseUrl ?? PROVIDER_BASE_URLS.amd ?? '';
-    const wire = usageWire(args.seam);
+    const wire = usageWire(args.seam, args.reference, args.timeoutMs ?? USAGE_TIMEOUT_MS);
     if (wire === undefined) {
-        // Two different facts, kept apart: no seam is a DSH without a credential provider, a seam with
-        // no fetch is one that only describes. A form that printed the second for the first would send
-        // the reader to look for a provider they already have.
-        const said = args.seam === undefined
-            ? 'no credential service on this context, so nothing was asked upstream'
-            : 'this credential service cannot make requests, so nothing was asked upstream';
-        return { providerId: args.providerId, usage: null, said, atMs: args.nowMs, tooSoon: false };
+        // One fact, one sentence: there is no credential seam on this host, so no key can be attached.
+        return {
+            providerId: args.providerId,
+            usage: null,
+            said: 'no credential service on this context, so nothing was asked upstream',
+            atMs: args.nowMs,
+            tooSoon: false,
+        };
     }
     const url = base.replace(/\/$/, '') + USAGE_PATH;
     let frame;
@@ -75,7 +133,7 @@ export async function readAmdUsage(args) {
         frame = await wire(url);
     }
     catch (error) {
-        // The transport's own words, scrubbed: a fetch error can quote a URL that carries a query.
+        // The transport's own words, scrubbed. sendOnce() already keeps the key out of them.
         return {
             providerId: args.providerId,
             usage: null,

@@ -17,11 +17,17 @@ import { apply } from '../src/index.js'
 
 type Listener = (moved: unknown) => void
 
+/** Answer one fetch without a socket, and keep the cast to the global out of every test. */
+function pretendFetch(impl: (url: unknown, init: unknown) => Promise<unknown>): void {
+  globalThis.fetch = impl as typeof globalThis.fetch
+}
+
 /** The em dash the icon paints when it has no count, written as an escape so this file is ASCII. */
 const NO_VALUE_BADGE = '\u2014/\u2014'
 
 interface FakeSeam {
-  resolve(ref: string): Promise<undefined>
+  /** Stubbed per test: the container answers undefined, a test may make it answer a value. */
+  resolve(ref: string): Promise<{ readonly value: string; readonly source?: string } | undefined>
   describe(ref: string): Promise<{ configured: boolean; source?: string; writable: boolean; masked?: string }>
   set(ref: string, value: string): Promise<void>
   unset(ref: string): Promise<void>
@@ -89,6 +95,8 @@ function contextOf(config: { hasInject: boolean; configured?: boolean; missing?:
   const injections: string[] = []
   const listeners: Listener[] = []
   const seam: FakeSeam = {
+    // Appended per test: the container default has no resolve, and readAmdUsage() would now see a
+    // seam that cannot hand over a value -- which is a different sentence than "no seam at all".
     resolve: async () => undefined,
     describe: async () => {
       seam.reads = (seam.reads ?? 0) + 1
@@ -342,7 +350,102 @@ describe('the route the page actually reaches', () => {
     expect(answered.ok).toBe(true)
     expect(typeof answered.value?.said).toBe('string')
     // Non-empty: the host did not merely have a source, it asked it and got a sentence back.
-    expect((answered.value?.said ?? '') as string).not.toBe('')
+    // The container's resolve() answers undefined, so the sentence is the absent-key one -- not
+    // the "cannot make requests" one that used to stand for every failure at once.
+    expect(answered.value?.said).toBe(
+      'upstream unreachable: no AMD_API_KEY is stored, so there was nothing to send',
+    )
+  })
+
+  it('sends the key the seam resolved, and says nothing about it afterwards', async () => {
+    // The seam is what the plugin cannot fake: resolve() is the only way the value gets here. So the
+    // seam is stubbed at that one member and the request itself is watched at globalThis.fetch --
+    // anything the plugin invented would show up on the wrong side of that boundary.
+    const { context, effects, seam } = contextOf({ hasInject: true })
+    const server = new FakeServer()
+    seam.resolve = async () => ({ value: 'rc-a-key-from-the-store', source: 'file' })
+    const realFetch = globalThis.fetch
+    const frames: Array<{ url: string; init: { method: string; headers: Record<string, string> } }> = []
+    pretendFetch(async (url, init) => {
+      var seen = init as { method: string; headers: Record<string, string> }
+      frames.push({ url: String(url), init: seen })
+      return {
+        status: 200,
+        text: async () => JSON.stringify({ daily_cost_limit_usd: 1, daily_cost_used_usd: 0.5 }),
+      }
+    })
+    try {
+      apply(context, { server })
+      for (const effect of effects) effect()
+      const answered = (await server.ask(ENDPOINT_TEST, undefined)) as {
+        value: { said: string; usage: { dailyUsedPts: { value: number } } | null }
+      }
+      expect(frames).toHaveLength(1)
+      expect(frames[0]?.init.method).toBe('GET')
+      expect(frames[0]?.init.headers.authorization).toBe('Bearer rc-a-key-from-the-store')
+            expect(frames[0]?.url).toContain('/usage?include_recent=true')
+      expect(answered.value.usage?.dailyUsedPts.value).toBe(0.5)
+      // Nothing on the way back out repeats the key: not the sentence, not the reading.
+      expect(JSON.stringify(answered)).not.toContain('rc-a-key-from-the-store')
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('says the key is missing when the seam has nothing stored, instead of blaming the wire', async () => {
+    const { context, effects } = contextOf({ hasInject: true })
+    const server = new FakeServer()
+    let asked = 0
+    const realFetch = globalThis.fetch
+    pretendFetch(async () => {
+      asked += 1
+      return { status: 200, text: async () => '{}' }
+    })
+    try {
+      apply(context, { server })
+      for (const effect of effects) effect()
+      const answered = (await server.ask(ENDPOINT_TEST, undefined)) as { value: { said: string; usage: unknown } }
+      expect(asked).toBe(0)
+      expect(answered.value.usage).toBeNull()
+      expect(answered.value.said).toBe(
+        'upstream unreachable: no AMD_API_KEY is stored, so there was nothing to send',
+      )
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  it('carries the last reading when pressed again inside the minute', async () => {
+    const { context, effects, seam } = contextOf({ hasInject: true })
+    const server = new FakeServer()
+    seam.resolve = async () => ({ value: 'rc-a-key-from-the-store', source: 'file' })
+    const realFetch = globalThis.fetch
+    let asked = 0
+    pretendFetch(async () => {
+      asked += 1
+      return {
+        status: 200,
+        text: async () => JSON.stringify({ daily_cost_limit_usd: 1, daily_cost_used_usd: 0.5 }),
+      }
+    })
+    try {
+      apply(context, { server })
+      for (const effect of effects) effect()
+      const first = (await server.ask(ENDPOINT_TEST, undefined)) as {
+        value: { said: string; tooSoon: boolean; carried?: boolean; usage: { dailyUsedPts: { value: number } } | null }
+      }
+      const second = (await server.ask(ENDPOINT_TEST, undefined)) as typeof first
+      expect(asked).toBe(1)
+      expect(first.value.tooSoon).toBe(false)
+      expect(first.value.carried).toBeUndefined()
+      expect(second.value.usage?.dailyUsedPts.value).toBe(0.5)
+      // One request, one number on screen twice -- and the second press says which one it is.
+      expect(second.value.carried).toBe(true)
+      expect(second.value.said).not.toBe(first.value.said)
+      expect(second.value.said).not.toBe('')
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })
 

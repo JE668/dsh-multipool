@@ -14,8 +14,12 @@
  * there is no cadence to fold into a budget -- only a person's click, which the 60-second floor in
  * core/amd-usage.ts already bounds.
  *
- * The key itself never appears in this file's answers or in its errors: the seam is asked to make
- * the request, and the sentences that leave here are this module's own.
+ * Who sends it: this process, not the seam. `ctx.credentials` answers four questions -- resolve,
+ * describe, set, unset -- and sending a request is not one of them. For one round this file asked
+ * `seam.fetch` and a missing member was read as "the host cannot ask", which was a sentence about
+ * our own wish dressed as a fact about DSH. `resolve` answers the value; attaching it is this
+ * module's job, and the whole job ends inside `sendOnce` below: nothing here logs, stores, or
+ * reports the value, and the sentences that leave carry the status line instead.
  */
 import { type ProviderId, type UsageResult } from '@dsh-multipool/core';
 import type { CredentialSeam } from './key-store.js';
@@ -26,16 +30,20 @@ export interface UsageFrame {
     readonly status: number;
     readonly body: string;
 }
+/** Wait no longer than this for the upstream; a form must not hang on a stalled socket. */
+export declare const USAGE_TIMEOUT_MS = 15000;
 /**
- * Make the request the seam can make, or nothing when it cannot make one.
+ * How one provider's usage read travels: ask the seam for the value, then send it.
  *
- * The seam is whatever `dsh-credentials-localhid` hands over; its `fetch` does the sending, the
- * credential header, and the proxy. This module does not know how the key is attached and must not
- * learn: a transport that took the key as a string would be a second place the key exists, and the
- * first rule of this repo is that there is one.
+ * Three failures stay three sentences, because they have three different fixes:
+ *   - no seam at all: this DSH composed no credential provider (nothing to fill in);
+ *   - seam says nothing is stored: the value is missing, not the transport (fill the field);
+ *   - seam throws: the store itself is unwell, and its own words are scrubbed and passed through.
+ * A seam that answers `undefined` is a reading too -- "absent" is what `keyStateOf` calls it -- and
+ * saying "cannot make requests" for it would send the reader to look for the wrong problem.
  */
-export declare function usageWire(seam: CredentialSeam | undefined): ((url: string) => Promise<UsageFrame>) | undefined;
-/** What a press of the test button produces: a reading, or the reason there is none. */
+export declare function usageWire(seam: CredentialSeam | undefined, reference: string, timeoutMs: number): ((url: string) => Promise<UsageFrame>) | undefined;
+/** What a press of the test button produces edition: a reading, or the reason there is none. */
 export interface UsageAttempt {
     /** Which provider was asked. Beside the answer so a form never has to remember what it pressed. */
     readonly providerId: ProviderId;
@@ -45,8 +53,18 @@ export interface UsageAttempt {
     readonly said: string;
     /** Epoch ms this attempt finished, so a second press inside a minute can be refused locally. */
     readonly atMs: number;
-    /** True when the attempt was not even made because the last one was too recent. */
+    /**
+     * True when no request was made because the last one was too recent, and `said` is the sentence
+     * explaining which reading the answer is instead -- see the merge branch in readAmdUsage.
+     */
     readonly tooSoon: boolean;
+    /**
+     * True when `usage` is the previous reading carried forward rather than a new one: inside the
+     * 60-second floor there is one request per minute, and a second press inside it gets that one
+     * request's answer with a sentence that says so. A form may style it differently; it must not
+     * print it as a fresh number (docs/07 U-06).
+     */
+    readonly carried?: boolean;
 }
 /**
  * Fetch the account's usage once, and say what happened in words a form can print.
@@ -59,10 +77,12 @@ export interface UsageAttempt {
 export declare function readAmdUsage(args: {
     readonly providerId: ProviderId;
     readonly seam: CredentialSeam | undefined;
+    readonly reference: string;
     readonly baseUrl?: string;
     readonly nowMs: number;
     readonly lastAttemptMs?: number;
     readonly previous?: UsageResult;
+    readonly timeoutMs?: number;
 }): Promise<UsageAttempt>;
 /** Put one reading into the map the snapshot reads, or take the provider's entry out. */
 export declare function withProviderUsage(usage: Readonly<Partial<Record<string, UsageResult | null>>> | undefined, providerId: string, reading: UsageResult | null): Readonly<Partial<Record<string, UsageResult | null>>>;
