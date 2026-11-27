@@ -41,7 +41,6 @@
  */
 import { type Account, type MetricsEvent, type ProviderId, type Snapshot, type UsageResult } from '@dsh-multipool/core';
 import { type IconView } from '@dsh-multipool/plugin-client';
-import type { KeyLayer } from './key-store.js';
 import type { UsageAttempt } from './usage.js';
 /**
  * The path prefix the page asks under, and the two endpoints below it.
@@ -136,7 +135,7 @@ export interface ChannelSource {
      * answered. It rides beside `reading` for the same reason -- both are facts about the seam that
      * the accounts list cannot carry.
      */
-    readonly keyLayer?: () => KeyLayer | undefined;
+    readonly keyLayer?: () => string | undefined;
     /**
      * The upstream usage reading for this provider, asked for now (T-2-f's test button).
      *
@@ -180,7 +179,7 @@ export declare const COMMAND_NO_WRITES = "no credential service";
 /** What the seam says about the key now, minus the seam itself: `seam` is a live object, not wire. */
 export interface KeyReading {
     readonly present: boolean;
-    readonly layer?: KeyLayer;
+    readonly layer?: string;
 }
 export interface CommandOutcome {
     /** True only when the command ran; a refusal says why in `reason` and writes nothing. */
@@ -214,7 +213,7 @@ export interface PublishedView {
     /** The scrubbed JSON. Kept beside the view so a test can assert the wire carries no key. */
     readonly wire: string;
     /** Which layer answered, absent when nobody has read the seam. Same reason as ChannelSource. */
-    readonly layer?: KeyLayer;
+    readonly layer?: string;
 }
 export interface OpenChannelOptions {
     readonly source: ChannelSource;

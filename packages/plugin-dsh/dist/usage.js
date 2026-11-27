@@ -129,17 +129,6 @@ export async function readAmdUsage(args) {
         };
     }
     const url = base.replace(/\/$/, '') + USAGE_PATH;
-    // Where the key actually lives, asked beside it: resolve() can answer from the process environment
-    // even when nothing is in the store, and the layer argument is what the caller last heard -- old
-    // enough for that answer to have moved. Best-effort: a describe() that throws or names no layer
-    // leaves it unknown, and unknown is a state this attempt is allowed to be in.
-    let layer = args.layer;
-    const holder = args.seam;
-    if (holder !== undefined && typeof holder.describe === 'function') {
-        const info = await holder.describe(args.reference).catch(() => undefined);
-        if (info !== undefined && info !== null && typeof info.source === 'string')
-            layer = info.source;
-    }
     let frame;
     try {
         frame = await wire(url);
@@ -180,7 +169,7 @@ export async function readAmdUsage(args) {
         said: '',
         atMs: args.nowMs,
         tooSoon: false,
-        layer,
+        layer: args.layer,
     };
 }
 /** Put one reading into the map the snapshot reads, or take the provider's entry out. */

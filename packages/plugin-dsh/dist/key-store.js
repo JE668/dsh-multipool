@@ -26,7 +26,15 @@
 import { scrubSecrets, validateAmdKey } from './vendor/core/index.js';
 /** The reference names this plugin asks the credential seam for. 02 section 1.2 names the first. */
 export const AMD_KEY_REFS = ['AMD_API_KEY'];
-const LAYERS = ['file', 'env', 'project-env', 'user-env'];
+/**
+ * The four layer names DSH 0.2.2-rc.5 ships, as this repo spells them in its own words.
+ *
+ * A union, not the type of the field: the seam may name a fifth one day, and a form that refused to
+ * carry it would be this repo deciding the seam cannot answer -- the same invention the old
+ * `includes()` guard made, only at the type level. The field is `string`; this name is the list the
+ * page has words for (client.js layerWord, docs/05 section 2.3).
+ */
+export const KNOWN_LAYERS = ['file', 'env', 'project-env', 'user-env'];
 /**
  * `unavailable` and `refused` stay apart because one is a fact about the install and the other
  * is a fault: a form that painted both the same would hide the bug behind a blank field.
@@ -38,9 +46,11 @@ export function keyStateOf(info) {
     if (record.configured !== true)
         return { kind: 'absent' };
     const layer = record.source;
-    if (typeof layer === 'string' && LAYERS.includes(layer)) {
-        return { kind: 'configured', layer: layer };
-    }
+    // A layer name the seam supplies is a fact, and it travels as given. Whether this repo has a word
+    // for it is a question the page asks about its own vocabulary, not one this module may answer by
+    // filing an unknown name under 'file' -- which would be inventing a location the seam never named.
+    if (typeof layer === 'string' && layer !== '')
+        return { kind: 'configured', layer };
     // configured with an unnamed layer: the value is there, and saying where would be a guess.
     return { kind: 'configured', layer: 'file' };
 }

@@ -29,7 +29,7 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
-import { createSystemClock } from './vendor/core/index.js';
+import { USAGE_POLL_FLOOR_MS, createSystemClock, } from './vendor/core/index.js';
 import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
@@ -197,7 +197,28 @@ async function readSeamNow(seam, facts, onRead) {
  * exactly as it was: the old number is still what the account said, and its own `usageFetchedAt`
  * says how old it is. Overwriting it with an error would blank a true number into a blank page.
  */
-async function askUsage(providerId, seam, nowMs, lastAttemptMs, stamp, facts) {
+async function askUsage(providerId, seam, nowMs, lastAttemptMs, stamp, facts, readFromSeam) {
+    // Where the key is, asked before what it cost. The test button is the one surface that touches
+    // both halves, so it is the one place a first press can learn the layer: resolve()/describe()
+    // is a store read with no request behind it, it charges nothing, and it is not the number --
+    // the 60-second floor below is about the number, and this must not borrow it.
+    //
+    // Read on every ask, not once and carried: a reading made inside the minute still names a place
+    // for the page to print, and the store is the only thing that can say where that place is now.
+    // Caching it would print yesterday's location beside today's number -- the same slide into "a
+    // fact about the number" that the two refusals above were split to avoid.
+    const stale = lastAttemptMs();
+    const insideFloor = stale !== undefined && nowMs() - stale < USAGE_POLL_FLOOR_MS;
+    let layer = facts?.keyLayer;
+    if (readFromSeam !== undefined) {
+        await readFromSeam();
+        layer = facts?.keyLayer;
+    }
+    else if (!insideFloor && seam !== undefined && typeof seam.describe === 'function') {
+        const info = await seam.describe(AMD_KEY_REF_NAME).catch(() => undefined);
+        if (info !== undefined && info !== null && typeof info.source === 'string')
+            layer = info.source;
+    }
     const attempt = await readAmdUsage({
         providerId,
         seam,
@@ -207,7 +228,7 @@ async function askUsage(providerId, seam, nowMs, lastAttemptMs, stamp, facts) {
         ...(facts?.usage?.[providerId] === undefined ? {} : { previous: facts.usage[providerId] }),
         // The layer comes from the seam's own answer, resolved beside the key: it is a fact about
         // where the reading was taken from, and the page may only name it on a reading that is new.
-        ...(facts?.keyLayer === undefined ? {} : { layer: facts.keyLayer }),
+        ...(layer === undefined ? {} : { layer }),
     });
     if (!attempt.tooSoon)
         stamp(attempt.atMs);
@@ -236,7 +257,7 @@ export function apply(ctx, options = {}) {
             readFromSeam: () => readSeamNow(seam, facts, onKeyStatus),
             testUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
                 lastAttemptMs = stamp;
-            }, facts),
+            }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
         };
         const source = channelSourceFrom(facts, nowMs, hooks);
         const budget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES };
@@ -284,6 +305,6 @@ export function apply(ctx, options = {}) {
 }
 export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
-export { AMD_KEY_REFS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
+export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
 export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
 //# sourceMappingURL=index.js.map

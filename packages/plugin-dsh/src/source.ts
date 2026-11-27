@@ -19,7 +19,6 @@
 
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core'
 import type { ChannelSource } from './channel.js'
-import type { KeyLayer } from './key-store.js'
 import type { UsageAttempt } from './usage.js'
 
 /** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
@@ -51,7 +50,7 @@ export interface SourceFacts {
    * wanted one would have to be handed it anyway. Absent when nobody looked, so a page can say "no
    * one has read" instead of "the file", which it would merely be guessing.
    */
-  readonly keyLayer: KeyLayer | undefined
+  readonly keyLayer: string | undefined
 }
 
 /** A source that has nothing to report yet: every member is absent, none is zero. */
@@ -109,21 +108,22 @@ export function channelSourceFrom(
 /**
  * Which layer last answered, or nothing at all when nobody has asked yet.
  *
- * Not `facts.keyLayer ?? 'file'`: key-store.ts already draws that line for a *configured* key with
- * no named source, where "the value is there and saying where would be a guess" still deserves the
- * word that describes the common case. Here the question has not been put, so the only honest answer
- * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
+ * The name travels as the seam spelled it -- this module does not keep a list of layers it approves
+ * of. A seam that answers some fifth word is answering a question this file never asked it, and
+ * whether the page has a sentence for that word is the page's vocabulary to hold (client.js,
+ * layerWord). Spelling the four out here would put the same decision in two places, and the copy
+ * that runs first would win: the seam's new layer would reach the page as "no one has read",
+ * which is a lie with a question mark in it.
+ *
+ * Absent only when nobody has asked, which is the absence the page is allowed to describe.
  */
-export function keyLayerOf(facts: SourceFacts): KeyLayer | undefined {
+export function keyLayerOf(facts: SourceFacts): string | undefined {
   // NOTHING_READ leaves the member out, so reading it off here is reading a value that may simply
-  // not exist yet -- TypeScript happily calls it KeyLayer | undefined because the interface does,
+  // not exist yet -- TypeScript happily calls it string | undefined because the interface does,
   // and the settings page then prints a layer nobody reported. The runtime check is the one that
-  // matters: absent facts, absent layer.
+  // matters: absent facts, absent layer. Anything else is what the seam said.
   const seen = (facts as { readonly keyLayer?: unknown }).keyLayer
   if (typeof seen !== 'string') return undefined
-  // The four names are spelled again here rather than imported from key-store.ts: that module owns
-  // what a layer *means* to the key field, this one only owns which spellings may leave the process.
-  if (seen !== 'file' && seen !== 'env' && seen !== 'project-env' && seen !== 'user-env') return undefined
   return seen
 }
 

@@ -12,7 +12,7 @@ import {
   type Route,
   type RouteServer,
 } from '../src/channel.js'
-import { KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
+import { AMD_KEY_REF, KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
 import { apply } from '../src/index.js'
 
 type Listener = (moved: unknown) => void
@@ -31,6 +31,10 @@ interface FakeSeam {
   describe(ref: string): Promise<{ configured: boolean; source?: string; writable: boolean; masked?: string }>
   set(ref: string, value: string): Promise<void>
   unset(ref: string): Promise<void>
+  /** What the store last resolved, when a test needs describe() to follow resolve(): the two are
+   *  one seam answering two questions; and the test should not have to keep them in step by
+   *  hand. Absent means "describe() does not follow the last resolve()", which is the default. */
+  layer?: string
   reads?: number
 }
 
@@ -101,7 +105,7 @@ function contextOf(config: { hasInject: boolean; configured?: boolean; missing?:
     describe: async () => {
       seam.reads = (seam.reads ?? 0) + 1
       return config.configured === true
-        ? { configured: true, source: 'file', writable: true, masked: 'rc-\u2022\u2022' }
+        ? { configured: true, source: seam.layer ?? 'file', writable: true, masked: 'rc-\u2022\u2022' }
         : { configured: false, writable: true }
     },
     set: async () => undefined,
@@ -345,6 +349,7 @@ describe('the route the page actually reaches', () => {
       value?: { said?: string; usage?: unknown }
       error?: { code: string }
     }
+
     expect(answered.error).toBeUndefined()
     expect(answered.ok).toBe(true)
     expect(typeof answered.value?.said).toBe('string')
@@ -360,7 +365,7 @@ describe('the route the page actually reaches', () => {
     // The seam is what the plugin cannot fake: resolve() is the only way the value gets here. So the
     // seam is stubbed at that one member and the request itself is watched at globalThis.fetch --
     // anything the plugin invented would show up on the wrong side of that boundary.
-    const { context, effects, seam } = contextOf({ hasInject: true })
+    const { context, effects, listeners, seam } = contextOf({ hasInject: true, configured: true })
     const server = new FakeServer()
     // A clock this test owns: the minute between two presses is a fact about wall time, not
     // about what is being tested. Moving it forward is the same door the host uses -- there is no
@@ -392,16 +397,24 @@ describe('the route the page actually reaches', () => {
       expect(frames).toHaveLength(1)
       expect(frames[0]?.init.method).toBe('GET')
       expect(frames[0]?.init.headers.authorization).toBe('Bearer rc-a-key-from-the-store')
-            expect(frames[0]?.url).toContain('/usage?include_recent=true')
+      expect(frames[0]?.url).toContain('/usage?include_recent=true')
       expect(answered.value.usage?.dailyUsedPts.value).toBe(0.5)
       // Nothing on the way back out repeats the key: not the sentence, not the reading.
       expect(JSON.stringify(answered)).not.toContain('rc-a-key-from-the-store')
       // The layer the key lives in rides on the reading, so the form can name it without a second
-      // request; moving the clock is what makes this a second question at all, since inside the
-      // minute the floor answers with the first reading and asks upstream nothing.
+      // request.
+      expect(answered.value.layer).toBe('file')
+      // Moving the clock is what makes the second press a second question at all: inside the minute
+      // the floor answers with the first reading and asks upstream nothing.
+      // The layer above is not cached from the first press: it is re-read when a reading goes out,
+      // because inside the minute there is no new reading for a new layer to sit beside, and outside
+      // it the store is the only thing that can say which name it now holds. So the test swaps the
+      // store between the two presses rather than raising an event -- there is no listener to raise
+      // it at yet, since apply()'s injection callback runs after the effect that asked for it, and
+      // the watch is installed there, not inside openChannel().
+      now += 60_001
       seam.resolve = async () => ({ value: 'rc-a-key-from-the-store', source: 'env' })
-      seam.describe = async () => ({ configured: true, source: 'env', writable: true })
-      now += 61_000
+      seam.layer = 'env'
       const named = (await server.ask(ENDPOINT_TEST, undefined)) as {
         value: { said: string; layer?: string; usage: unknown }
       }

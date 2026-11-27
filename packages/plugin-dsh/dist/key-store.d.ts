@@ -67,7 +67,7 @@ export type KeyState =
 /** The seam answered: a value is there, in one of its layers. */
 {
     readonly kind: 'configured';
-    readonly layer: KeyLayer;
+    readonly layer: string;
 }
 /** The seam answered: nothing is there. Not an error -- nothing has been filled in yet. */
  | {
@@ -82,7 +82,15 @@ export type KeyState =
     readonly kind: 'refused';
     readonly reason: string;
 };
-export type KeyLayer = 'file' | 'env' | 'project-env' | 'user-env';
+/**
+ * The four layer names DSH 0.2.2-rc.5 ships, as this repo spells them in its own words.
+ *
+ * A union, not the type of the field: the seam may name a fifth one day, and a form that refused to
+ * carry it would be this repo deciding the seam cannot answer -- the same invention the old
+ * `includes()` guard made, only at the type level. The field is `string`; this name is the list the
+ * page has words for (client.js layerWord, docs/05 section 2.3).
+ */
+export declare const KNOWN_LAYERS: readonly ['file', 'env', 'project-env', 'user-env'];
 /**
  * `unavailable` and `refused` stay apart because one is a fact about the install and the other
  * is a fault: a form that painted both the same would hide the bug behind a blank field.

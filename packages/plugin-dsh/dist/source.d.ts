@@ -18,7 +18,6 @@
  */
 import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
 import type { ChannelSource } from './channel.js';
-import type { KeyLayer } from './key-store.js';
 import type { UsageAttempt } from './usage.js';
 /** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
 export interface SourceHooks {
@@ -48,7 +47,7 @@ export interface SourceFacts {
      * wanted one would have to be handed it anyway. Absent when nobody looked, so a page can say "no
      * one has read" instead of "the file", which it would merely be guessing.
      */
-    readonly keyLayer: KeyLayer | undefined;
+    readonly keyLayer: string | undefined;
 }
 /** A source that has nothing to report yet: every member is absent, none is zero. */
 export declare const NOTHING_READ: SourceFacts;
@@ -68,12 +67,16 @@ export declare function channelSourceFrom(facts: SourceFacts, nowMs: () => numbe
 /**
  * Which layer last answered, or nothing at all when nobody has asked yet.
  *
- * Not `facts.keyLayer ?? 'file'`: key-store.ts already draws that line for a *configured* key with
- * no named source, where "the value is there and saying where would be a guess" still deserves the
- * word that describes the common case. Here the question has not been put, so the only honest answer
- * is the absence -- and the page prints "no one has read" rather than naming a layer nobody reported.
+ * The name travels as the seam spelled it -- this module does not keep a list of layers it approves
+ * of. A seam that answers some fifth word is answering a question this file never asked it, and
+ * whether the page has a sentence for that word is the page's vocabulary to hold (client.js,
+ * layerWord). Spelling the four out here would put the same decision in two places, and the copy
+ * that runs first would win: the seam's new layer would reach the page as "no one has read",
+ * which is a lie with a question mark in it.
+ *
+ * Absent only when nobody has asked, which is the absence the page is allowed to describe.
  */
-export declare function keyLayerOf(facts: SourceFacts): KeyLayer | undefined;
+export declare function keyLayerOf(facts: SourceFacts): string | undefined;
 /**
  * Whether the facts in hand came from a read, from a pool that was read and empty, or from neither.
  *

@@ -126,6 +126,23 @@ describe('the seam is named, not guessed', () => {
     await expect(describeKey(fileLayer, 'AMD_API_KEY')).resolves.toEqual({ kind: 'configured', layer: 'file' })
   })
 
+  it('keeps a layer name the seam supplies, even one this repo has no word for', () => {
+    // The seam names a layer; this repo's four spellings are a vocabulary, not a guard. Dropping a
+    // fifth name -- or filing it under 'file' -- is key-store.ts answering a question the page asks
+    // about itself: which names it has words for (m15329).
+    const state = keyStateOf({ configured: true, source: 'ndjson-layer', writable: true })
+    expect(state).toEqual({ kind: 'configured', layer: 'ndjson-layer' })
+  })
+
+  it('claims file only when the answer named nothing at all', () => {
+    // An empty source is the one shape that is genuinely "unnamed": there is no word to keep, and
+    // the file layer is what a key with no named source has always meant here.
+    for (const source of ['', undefined, null]) {
+      const info = source === undefined ? { configured: true, writable: true } : { configured: true, source, writable: true }
+      expect(keyStateOf(info)).toEqual({ kind: 'configured', layer: 'file' })
+    }
+  })
+
   it('has no state that mixes configured and absent', () => {
     const states: KeyState[] = [
       { kind: 'configured', layer: 'file' },

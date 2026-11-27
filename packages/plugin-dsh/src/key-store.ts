@@ -67,7 +67,7 @@ export interface CredentialSeam {
 /** What a key field may say about itself without claiming anything it has not read (U-06). */
 export type KeyState =
   /** The seam answered: a value is there, in one of its layers. */
-  | { readonly kind: 'configured'; readonly layer: KeyLayer }
+  | { readonly kind: 'configured'; readonly layer: string }
   /** The seam answered: nothing is there. Not an error -- nothing has been filled in yet. */
   | { readonly kind: 'absent' }
   /** Nobody answered: this context carries no credential service. */
@@ -75,9 +75,15 @@ export type KeyState =
   /** The seam threw. The reason is scrubbed; the key itself was never in it. */
   | { readonly kind: 'refused'; readonly reason: string }
 
-export type KeyLayer = 'file' | 'env' | 'project-env' | 'user-env'
-
-const LAYERS: readonly KeyLayer[] = ['file', 'env', 'project-env', 'user-env']
+/**
+ * The four layer names DSH 0.2.2-rc.5 ships, as this repo spells them in its own words.
+ *
+ * A union, not the type of the field: the seam may name a fifth one day, and a form that refused to
+ * carry it would be this repo deciding the seam cannot answer -- the same invention the old
+ * `includes()` guard made, only at the type level. The field is `string`; this name is the list the
+ * page has words for (client.js layerWord, docs/05 section 2.3).
+ */
+export const KNOWN_LAYERS = ['file', 'env', 'project-env', 'user-env'] as const
 
 /**
  * `unavailable` and `refused` stay apart because one is a fact about the install and the other
@@ -88,9 +94,10 @@ export function keyStateOf(info: unknown): KeyState {
   const record = info as Record<string, unknown>
   if (record.configured !== true) return { kind: 'absent' }
   const layer = record.source
-  if (typeof layer === 'string' && (LAYERS as readonly string[]).includes(layer)) {
-    return { kind: 'configured', layer: layer as KeyLayer }
-  }
+  // A layer name the seam supplies is a fact, and it travels as given. Whether this repo has a word
+  // for it is a question the page asks about its own vocabulary, not one this module may answer by
+  // filing an unknown name under 'file' -- which would be inventing a location the seam never named.
+  if (typeof layer === 'string' && layer !== '') return { kind: 'configured', layer }
   // configured with an unnamed layer: the value is there, and saying where would be a guess.
   return { kind: 'configured', layer: 'file' }
 }
