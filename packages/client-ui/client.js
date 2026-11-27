@@ -486,14 +486,21 @@ window.__ModuleLoader__.load({
         clearInterval(timer)
       }
     }
-    /** Which word names the layer the seam reported, for the one place that prints it. */
+    /**
+     * Which word names the layer the seam reported -- or none, for a layer this page has no word
+     * for.
+     *
+     * Returning "cannot tell which layer" would put it inside the brackets that only open when the
+     * seam did name one: "stored here (cannot tell which layer)" contradicts itself in five words.
+     * A name this page does not know is a name it has nothing to add about, and the sentence before
+     * the bracket already said the true and useful thing.
+     */
     function layerWord(layer) {
-      if (layer === undefined || layer === null) return SETTINGS.unreadable
       if (layer === 'file') return SETTINGS.inFile
       if (layer === 'env') return SETTINGS.inEnv
       if (layer === 'project-env') return SETTINGS.inProjectEnv
       if (layer === 'user-env') return SETTINGS.inUserEnv
-      return SETTINGS.unreadable
+      return ''
     }
 
     // Same three shapes the panel above uses, so the settings page reads as one more page of this
@@ -649,8 +656,11 @@ window.__ModuleLoader__.load({
     function whereOf(read) {
       if (read.reading === 'unread') return SETTINGS.unread
       if (read.present !== true) return SETTINGS.notStored
-      if (read.layer === undefined) return SETTINGS.stored
-      return SETTINGS.stored + SETTINGS.inLayer + layerWord(read.layer)
+      const named = read.layer === undefined ? '' : layerWord(read.layer)
+      // Nothing opened, nothing to close: an unknown layer name leaves the line as the bare sentence
+      // rather than as a bracket holding this page's ignorance.
+      if (named === '') return SETTINGS.stored
+      return SETTINGS.stored + SETTINGS.inLayer + named
     }
 
     function useKeySection() {

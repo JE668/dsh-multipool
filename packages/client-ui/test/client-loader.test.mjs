@@ -355,6 +355,12 @@ test('a key with no reported layer is called present, not called any particular 
     plugin.whereOf({ reading: 'unread', present: false, layer: undefined }),
     '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
   )
+  // A layer this page has no word for is not a bracket holding its own ignorance: the sentence
+  // before the bracket is still true and still useful.
+  assert.equal(
+    plugin.whereOf({ reading: 'read', present: true, layer: 'a-layer-from-the-future' }),
+    '\u5df2\u5b58\u5728\u672c\u673a',
+  )
 })
 
 test('a page with no window at all is a host too old, not a save that failed', async () => {
