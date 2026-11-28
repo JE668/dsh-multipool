@@ -213,7 +213,7 @@ test('the test button presses the test endpoint, not the command one', async () 
   // undefined body: not an object, not even an empty one. The host reads a provider id out of
   // whatever arrives, and {} would look like a payload that named nobody.
   assert.equal(page.calls[0][1].body, "null")
-  assert.equal(said, 'HTTP 401: Login required')
+  assert.equal(said, '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57')
 })
 
 test('a refusal, a thrown fetch and a dead host are three sentences, all envelopes', async () => {
@@ -288,7 +288,7 @@ test('a reading is printed in two decimals, under a sentence that does not deny 
       fetchedAt: '2026-11-27T04:06:00Z',
     },
   })
-  assert.match(answered, /0\.2 of 1 pts/)
+  assert.match(answered, /^\u5df2\u7528 0\.2 \/ 1 pts$/)
   assert.doesNotMatch(answered, /0\.19718791934428737/)
   assert.doesNotMatch(answered, /\u2014/)
 })
@@ -307,7 +307,7 @@ test('a whole number does not grow decimals it did not need', () => {
       fetchedAt: '2026-11-27T04:06:00Z',
     },
   })
-  assert.match(answered, /5 of 20 pts/)
+  assert.match(answered, /^\u5df2\u7528 5 \/ 20 pts$/)
 })
 
 test('a reading leads with its own sentence, not with the one for a missing number', () => {
@@ -319,9 +319,9 @@ test('a reading leads with its own sentence, not with the one for a missing numb
     tooSoon: false,
     usage: { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.2, source: 'api' } },
   })
-  // The left half of "0.2 of 1 pts" used to be the refusal sentence, so the line denied the number it
+  // The left half of "\u5df2\u7528 0.2 pts" used to be the refusal sentence, so the line denied the number it
   // printed. Nothing above checked the opening words; this does.
-  assert.match(answered, /\u4e0a\u6e38\u56de\u7b54\uff1a 0\.2 of 1 pts/)
+  assert.match(answered, /^\u5df2\u7528 0\.2 \/ 1 pts$/)
   assert.doesNotMatch(answered, /\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57/)
 })
 
@@ -332,7 +332,7 @@ test('the reading line carries no word about where the key is kept', () => {
   // enough to say where the key is, so it says it right after the number. Two facts, one line,
   // and the result reads as a fact about the number.
   const named = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 1, tooSoon: false, layer: 'file', usage: reading })
-  assert.equal(named, '\u4e0a\u6e38\u56de\u7b54\uff1a 0.59 of 1 pts')
+  assert.equal(named, '\u5df2\u7528 0.59 \/ 1 pts')
   assert.doesNotMatch(named, /\u914d\u7f6e\u6587\u4ef6/)
 })
 
@@ -363,6 +363,23 @@ test('a key with no reported layer is called present, not called any particular 
   )
 })
 
+test('a carried count is spoken here, not quoted from the host', () => {
+  // The host answers a carried reading with one English sentence meant for a reader of logs.
+  // One button cannot speak two languages depending on which second the upstream replied in,
+  // so the page says it in its own words -- before `said`, which is why this is a branch.
+  const plugin = factory()
+  const car = plugin.sentenceOf({
+    providerId: 'amd',
+    said: 'carried from the read made less than a minute ago',
+    atMs: 1,
+    tooSoon: false,
+    carried: true,
+    usage: { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.65, source: 'api' } },
+  })
+  assert.doesNotMatch(car, /carried from the read/)
+  assert.match(car, new RegExp('\u6cbf\u7528'))
+  assert.match(car, /0\.65 \/ 1 pts/)
+})
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })

@@ -193,10 +193,13 @@ window.__ModuleLoader__.load({
       // answered with nothing this page may read.
       tooSoon: '\u4e0a\u4e00\u6b21\u8bf7\u6c42\u8fd8\u4e0d\u5230\u4e00\u5206\u949f\uff0c\u8fd9\u6b21\u6ca1\u53d1\uff08\u4e0a\u6e38\u9650\u4e00\u5206\u949f\u4e00\u6b21\uff09',
       reached: '\u4e0a\u6e38\u5df2\u56de\u7b54\uff0c\u4f46\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57',
-      reading: '\u4e0a\u6e38\u56de\u7b54\uff1a',
-      // Said after a bare count only when the layer is known, and after a carried count always:
-      // the first reading the reader did not watch arrive, they only saw where it landed.
-      carried: '\u2014\u7231\u7528\u4e0a\u4e00\u6b21\u8bfb\u6570\uff08\u4e00\u5206\u949f\u5185\u53ea\u95ee\u4e00\u6b21\uff09',
+      // "used", not "upstream answered:": what follows is a quantity, and a quote from the upstream
+      // that happens to hold a quantity is not the same claim. The second word is the ceiling, and
+      // it has to be visible as a ceiling, because a bare slash reads as a fraction -- 0.65 / 1 as
+      // "65 percent through" is not what the upstream reported, and not what this page may imply.
+      reading: '\u5df2\u7528',
+      // Said only on a carried count: the number is real, the request behind it is not new.
+      carried: '\uff08\u6cbf\u7528\u4e0d\u5230\u4e00\u5206\u949f\u524d\u7684\u90a3\u6b21\u8bfb\u53d6\uff09',
       // The third sentence, for "the host answered nothing at all" -- a dead route, not a dead key.
       unreachable: '\u6ca1\u6709\u6536\u5230\u4e0a\u6e38\u7684\u56de\u7b54',
       unread: '\u672c\u673a\u8fd8\u6ca1\u8bfb\u8fc7',
@@ -253,17 +256,19 @@ window.__ModuleLoader__.load({
       // a whole round to three dashes.
       var attempt = answer
       if (attempt.tooSoon === true) return SETTINGS.tooSoon
-      // The upstream's own words, never a summary of them.
-      if (typeof attempt.said === 'string' && attempt.said !== '') return attempt.said
-      // A carried reading comes before the count, not after it: the number below is the one a
-      // minute ago bought, and introducing it as the upstream's answer would be the same lie the
-      // "answered but brought back no number" sentence told, only quieter.
-      var carrier =
-        attempt.carried === true && typeof attempt.atMs === 'number' && isFinite(attempt.atMs)
-          ? SETTINGS.carried
-          : ''
+      // A carried answer is spoken in this page's words, and it is spoken first. `said` on a
+      // carried answer is the host's fall-through sentence -- written for a reader of logs, in
+      // English -- and quoting it here is how one button came to answer in two languages,
+      // depending only on which second the upstream happened to reply in. The number is real
+      // either way; the sentence is the page's, and the host reports.
+      var carried = attempt.carried === true
+      // A reading that came back with no number is still a reading: calling it the host's
+      // failure would blame the host for answering.
       var usage = attempt.usage
-      if (usage === undefined || usage === null) return SETTINGS.reached
+      var countable = usage !== undefined && usage !== null
+      if (!carried && !countable) return SETTINGS.reached
+      if (!carried && typeof attempt.said === 'string' && attempt.said !== '') return attempt.said
+      var carrier = carried ? SETTINGS.carried : ''
       var used = usage.dailyUsedPts
       var limit = usage.dailyLimitPts
       if (used === undefined || used === null) return SETTINGS.reached
@@ -274,7 +279,7 @@ window.__ModuleLoader__.load({
       // The layer is not appended here. The where line already carries where the key lives, and a
       // second telling after the number reads as a fact about the number -- "0.59 pts, in the config
       // file" -- which is the one thing a reading of the number must not imply.
-      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' of ' + ptsOf(limit.value) + ' pts'
+      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts'
     }
 
     /**
