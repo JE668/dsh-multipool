@@ -23,7 +23,7 @@ import type { UsageAttempt } from './usage.js'
 import { readAmdUsage, withProviderUsage } from './usage.js'
 import { USAGE_POLL_FLOOR_MS } from '@dsh-multipool/core'
 import type { UsageResult } from '@dsh-multipool/core'
-import type { CredentialSeam } from './key-store.js'
+import type { CredentialSeam, KeyState } from './key-store.js'
 
 /**
  * This is the intercept layer the panel needs: every chat request that DSH points at AMD
@@ -303,7 +303,7 @@ async function watchKeyStatusIntoFacts(
   let disposed = false
 
   const { readKeyStatus, AMD_KEY_REF } = await import('./credentials.js')
-  const { accountFrom } = await import('./index.js')
+  const { keyStateOf } = await import('./key-store.js')
   const { KEY_UPDATED_EVENT } = await import('./credentials.js')
 
   const read = async () => {
@@ -311,7 +311,7 @@ async function watchKeyStatusIntoFacts(
     const status = await readKeyStatus({ credentials: seam }, AMD_KEY_REF)
     if (disposed) return
     if (status.kind === 'read') {
-      const accounts = accountFrom(status.state)
+      const accounts = accountFromStatus(status.state)
       if (accounts !== undefined) {
         facts.accounts = accounts
         facts.keyLayer = status.state.kind === 'configured' ? status.state.layer : undefined
@@ -342,16 +342,32 @@ async function readSeamNow(
 ): Promise<boolean> {
   if (seam === undefined) return false
   const { readKeyStatus, AMD_KEY_REF } = await import('./credentials.js')
-  const { accountFrom } = await import('./index.js')
+  const { keyStateOf } = await import('./key-store.js')
   const status = await readKeyStatus({ credentials: seam }, AMD_KEY_REF)
   if (status.kind !== 'read') return false
-  const accounts = accountFrom(status.state)
+  const accounts = accountFromStatus(status.state)
   if (accounts === undefined) return false
   facts.accounts = accounts
   facts.keyLayer = status.state.kind === 'configured' ? status.state.layer : undefined
   if (status.state.kind !== 'configured') return false
   if (onRead !== undefined) onRead(status)
   return true
+}
+
+// Helper: convert KeyState to Account[]
+function accountFromStatus(state: KeyState): import('@dsh-multipool/core').Account[] | undefined {
+  if (state.kind !== 'configured') return undefined
+  return [{
+    providerId: 'amd',
+    accountAlias: 'AMD_API_KEY',
+    keyIdMasked: 'AMD_API_KEY',
+    enabled: true,
+    limits: { rpmAccount: { value: 20, source: 'assume', ref: 'docs/02' }, dailyQuota: undefined, planTier: undefined },
+    status: 'available',
+    coolUntil: undefined,
+    cooldownReason: undefined,
+    lastSeenAt: undefined,
+  }]
 }
 
 // Helper: ask usage

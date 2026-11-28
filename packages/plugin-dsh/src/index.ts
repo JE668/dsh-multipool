@@ -68,6 +68,7 @@ import {
 import type { CredentialSeam, KeyState } from './key-store.js'
 import { NOTHING_READ, channelSourceFrom, type SourceFacts, type SourceHooks } from './source.js'
 import { readAmdUsage, withProviderUsage, type UsageAttempt } from './usage.js'
+import { createIntercept, type InterceptOptions, type InterceptHandle } from './intercept-index.js'
 
 export const VERSION = '0.0.2-rc.4'
 
@@ -505,3 +506,6 @@ export {
   type Route,
   type RouteServer,
 } from './channel.js'
+
+// New exports for the intercept layer (T-3-c)
+export { createIntercept, type InterceptOptions, type InterceptHandle } from './intercept-index.js'

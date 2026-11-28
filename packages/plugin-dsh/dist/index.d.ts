@@ -138,4 +138,5 @@ export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
 export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyState, type KeyWrite } from './key-store.js';
 export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_DASHBOARD, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, type BridgeAnswer, type BridgeRequest, type BridgeResponse, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, type Route, type RouteServer, } from './channel.js';
+export { createIntercept, type InterceptOptions, type InterceptHandle } from './intercept-index.js';
 //# sourceMappingURL=index.d.ts.map

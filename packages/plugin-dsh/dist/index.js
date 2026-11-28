@@ -34,6 +34,7 @@ import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } f
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
 import { readAmdUsage, withProviderUsage } from './usage.js';
+import { createIntercept } from './intercept-index.js';
 export const VERSION = '0.0.2-rc.4';
 /**
  * The rail's second line is the account budget, and 04 section 2.2 says where that comes from:
@@ -336,4 +337,6 @@ export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
 export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_DASHBOARD, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
+// New exports for the intercept layer (T-3-c)
+export { createIntercept } from './intercept-index.js';
 //# sourceMappingURL=index.js.map
