@@ -20,22 +20,29 @@ function parseGoogleError(body) {
                 return {
                     message: typeof err.message === 'string' ? err.message : null,
                     code: typeof err.code === 'string' ? err.code : null,
+                    quotaId: typeof err.quotaId === 'string' ? err.quotaId : null,
                 };
             }
             // Direct shape: { error: { message } }
             if (typeof json.error === 'string') {
-                return { message: json.error, code: null };
+                return { message: json.error, code: null, quotaId: null };
             }
         }
     }
     catch {
         // not JSON
     }
-    return { message: null, code: null };
+    return { message: null, code: null, quotaId: null };
 }
 export function classifyGoogle(res) {
-    if (res.status === 429)
-        return 'rate_opaque'; // Google 429 可由 RPM/RPD/quotaId 引起，细分需 quotaId
+    if (res.status === 429) {
+        const parsed = parseGoogleError(res.body);
+        // Google 429 can be RPM, RPD, or quotaId-based. A quotaId that names a daily quota
+        // means the account won't succeed today: classify as daily_quota, not rate_opaque.
+        if (parsed.quotaId !== null && /daily/i.test(parsed.quotaId))
+            return 'daily_quota';
+        return 'rate_opaque'; // 需要 quotaId 细分，本地不能猜
+    }
     if (res.status === 403)
         return 'auth'; // 403 通常是 API Key 问题
     if (res.status === 404)

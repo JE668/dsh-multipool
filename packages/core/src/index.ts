@@ -266,6 +266,14 @@ export {
   addModelsPrefix,
 } from './google-adapter.js'
 export {
+  parseGoogleCatalogResponse,
+  normalizeGoogleModel,
+  normalizeGoogleModels,
+  fetchGoogleCatalog,
+  resetGoogleCatalogCache,
+  CATALOG_REFRESH_MS as GOOGLE_CATALOG_REFRESH_MS,
+} from './google-catalog.js'
+export {
   PLOT_HEIGHT,
   PLOT_WIDTH,
   trendFigureOf,

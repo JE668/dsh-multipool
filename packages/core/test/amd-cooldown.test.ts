@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { RateKind } from '../src/contract.js'
 
 import { accountAfterVerdict, cooldownKeyOf } from '../src/cooldown.js'
 import type { Account } from '../src/contract.js'
@@ -100,8 +101,13 @@ describe('A-19 four cooling reasons are distinguishable', () => {
   })
 
   it('all four reasons are pairwise distinct', () => {
-    const reasons = ['rpm_key', 'rpm_ip', 'concurrency', 'daily_quota'].map((rc) =>
-      accountAfterVerdict(acct(), verdict(rc, 10_000), NOW).cooldownReason
+    const reasons = ['rpm_key', 'rpm_ip', 'concurrency', 'daily_quota'].map(
+      (rc) =>
+        accountAfterVerdict(
+          acct(),
+          verdict(rc as RateKind, 10_000),
+          NOW,
+        ).cooldownReason,
     )
     expect(new Set(reasons).size).toBe(4)
   })

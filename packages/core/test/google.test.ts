@@ -102,3 +102,40 @@ describe('H-13: Google unknown error body not classified to error class (Z-07)',
     expect(classifyGoogle({ status: 200, headers: {}, body: '' })).toBeNull()
   })
 })
+
+describe('T-8-c: Google 429 quotaId parsing — local rate limit vs upstream quota exhausted', () => {
+  it('429 with quotaId naming daily quota → daily_quota', () => {
+    const body = JSON.stringify({
+      error: {
+        code: 429,
+        message: 'Quota exceeded for quota metric',
+        status: 'RESOURCE_EXHAUSTED',
+        quotaId: 'daily_quota_per_project_per_day',
+      },
+    })
+    expect(classifyGoogle({ status: 429, headers: {}, body })).toBe('daily_quota')
+  })
+
+  it('429 with quotaId naming RPM → rate_opaque (not daily)', () => {
+    const body = JSON.stringify({
+      error: {
+        code: 429,
+        message: 'Request quota exceeded',
+        status: 'RESOURCE_EXHAUSTED',
+        quotaId: 'requests_per_minute_per_project',
+      },
+    })
+    expect(classifyGoogle({ status: 429, headers: {}, body })).toBe('rate_opaque')
+  })
+
+  it('429 without quotaId → rate_opaque (cannot distinguish)', () => {
+    const body = JSON.stringify({
+      error: { code: 429, message: 'Rate limit exceeded', status: 'RESOURCE_EXHAUSTED' },
+    })
+    expect(classifyGoogle({ status: 429, headers: {}, body })).toBe('rate_opaque')
+  })
+
+  it('429 with empty body → rate_opaque', () => {
+    expect(classifyGoogle({ status: 429, headers: {}, body: '' })).toBe('rate_opaque')
+  })
+})
