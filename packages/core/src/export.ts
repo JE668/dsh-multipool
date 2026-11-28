@@ -6,7 +6,8 @@
  * scrubSecrets，确保任何残留的完整 Key（rc- / sk- / cpk- / nvapi- / AIza 前缀）都被
  * 压成 `<prefix>…`。keyIdMasked 本身已经是掩码后的值（首4+…+末4），末4位可见。
  */
-import { DashboardReading, type MetricsEvent } from './contract.js'
+import type { DashboardReading } from './reading.js'
+import type { MetricsEvent } from './contract.js'
 import { scrubSecrets } from './secret.js'
 
 /** 把一次看板应答序列化为可写出的 JSON 字符串，并在写出前清洗秘密。 */

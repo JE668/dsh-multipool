@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { maskKey, scrubSecrets } from '../src/secret.js'
 
 import { exportDashboard, exportEvents, type DashboardReading, type MetricsEvent } from '../src/index.js'
+import type { DetailRow } from '../src/amd-table.js'
 
 const NOW = Date.UTC(2026, 10, 19, 2, 0, 0)
 
@@ -16,7 +17,8 @@ function eventWithKey(keyIdMasked: string): MetricsEvent {
     status: 200,
     latencyMs: 120,
     attempt: 1,
-  }
+    concurrencyAtSend: 1,
+  } as MetricsEvent
 }
 
 describe('U-05 脱敏导出', () => {
@@ -24,8 +26,8 @@ describe('U-05 脱敏导出', () => {
     const reading: DashboardReading = {
       trend: [],
       rows: [
-        eventWithKey('rc-abcd1234efgh5678'),
-        eventWithKey('sk-ijkl9012mnop3456'),
+        eventWithKey('rc-abcd1234efgh5678') as unknown as DetailRow,
+        eventWithKey('sk-ijkl9012mnop3456') as unknown as DetailRow,
       ],
       concurrency: [],
       heat: [],
