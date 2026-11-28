@@ -70,6 +70,7 @@ export {
   headerOf,
   retryAfterMsOf,
   type AmdDiagnostic,
+  type AmdVerdict,
 } from './amd-error.js'
 
 export { accountAfterVerdict, cooldownKeyOf } from './cooldown.js'

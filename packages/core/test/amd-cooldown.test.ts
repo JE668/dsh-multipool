@@ -69,3 +69,40 @@ describe('A-07 one verdict reaches one account, and rpm_ip is not rpm_key', () =
     expect(cooldownKeyOf('amd', 'AMD-A', verdict(null, null))).toBeNull()
   })
 })
+
+describe('A-19 four cooling reasons are distinguishable', () => {
+  it('rpm_key → rate_limited with reason rpm_key', () => {
+    const cooled = accountAfterVerdict(acct(), verdict('rpm_key', 30_000), NOW)
+    expect(cooled.status).toBe('rate_limited')
+    expect(cooled.cooldownReason).toBe('rpm_key')
+    expect(cooled.coolUntil).toBe(NOW + 30_000)
+  })
+
+  it('rpm_ip → rate_limited with reason rpm_ip', () => {
+    const cooled = accountAfterVerdict(acct(), verdict('rpm_ip', 60_000), NOW)
+    expect(cooled.status).toBe('rate_limited')
+    expect(cooled.cooldownReason).toBe('rpm_ip')
+    expect(cooled.coolUntil).toBe(NOW + 60_000)
+  })
+
+  it('concurrency → rate_limited with reason concurrency', () => {
+    const cooled = accountAfterVerdict(acct(), verdict('concurrency', 5_000), NOW)
+    expect(cooled.status).toBe('rate_limited')
+    expect(cooled.cooldownReason).toBe('concurrency')
+    expect(cooled.coolUntil).toBe(NOW + 5_000)
+  })
+
+  it('daily_quota → quota_exhausted with reason daily_quota', () => {
+    const cooled = accountAfterVerdict(acct(), verdict('daily_quota', 34_200_000), NOW)
+    expect(cooled.status).toBe('quota_exhausted')
+    expect(cooled.cooldownReason).toBe('daily_quota')
+    expect(cooled.coolUntil).toBe(NOW + 34_200_000)
+  })
+
+  it('all four reasons are pairwise distinct', () => {
+    const reasons = ['rpm_key', 'rpm_ip', 'concurrency', 'daily_quota'].map((rc) =>
+      accountAfterVerdict(acct(), verdict(rc, 10_000), NOW).cooldownReason
+    )
+    expect(new Set(reasons).size).toBe(4)
+  })
+})

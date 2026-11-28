@@ -33,6 +33,8 @@ import {
   heatOf,
   type MinuteConcurrency,
   type MinuteHeat,
+  type AmdVerdict,
+  accountAfterVerdict,
 } from '@dsh-multipool/core'
 import type { SourceHooks } from './source.js'
 import type { SourceFacts } from './source.js'
@@ -219,6 +221,30 @@ export function createIntercept(
         // Observe gate with response headers (account-level remaining RPM)
         const headerRemaining = parseHeaderRemaining(responseHeaders)
         if (headerRemaining !== null) gate.observeHeaders(headerRemaining)
+
+        // A-19: apply cooling reason to the account that produced this response.
+        // accountAfterVerdict maps each RateClass (rpm_key / rpm_ip / concurrency /
+        // daily_quota) to a distinct cooldownReason so the UI can show "why" and "for how long".
+        if (rateKind !== null && facts.accounts) {
+          const retryAfter = retryAfterMsOf(
+            { status: responseStatus, headers: responseHeaders, body: responseBody },
+            nowMs()
+          )
+          const verdict: Pick<AmdVerdict, 'rateClass' | 'retryAfterMs'> = {
+            rateClass: rateKind,
+            retryAfterMs: retryAfter,
+          }
+          const alias = keyFrame?.accountAlias ?? 'unknown'
+          const idx = facts.accounts.findIndex((a) => a.accountAlias === alias)
+          const target = facts.accounts[idx]
+          if (idx >= 0 && target !== undefined) {
+            facts.accounts = [
+              ...facts.accounts.slice(0, idx),
+              accountAfterVerdict(target, verdict as AmdVerdict, nowMs()),
+              ...facts.accounts.slice(idx + 1),
+            ]
+          }
+        }
       } catch {
         // Network/transport error
         responseStatus = 0
