@@ -11,6 +11,8 @@ export { accountAfterVerdict, cooldownKeyOf } from './cooldown.js';
 export { CATALOG_REFRESH_MS, fetchCatalog, normalizeModel, normalizeModels, parseCatalogResponse, resetCatalogCache, setCatalogTransport, type FetchLike as CatalogFetchLike, } from './amd-catalog.js';
 export { USAGE_POLL_DEFAULT_MS, USAGE_POLL_FLOOR_MS, fetchAmdUsage, parseUsageResponse, setUsageTransport, type UsagePollState, } from './amd-usage.js';
 export { BREAKER_WINDOW_SAMPLES, BREAKER_WINDOW_MS, BREAKER_TRIP_RATIO, BREAKER_OPEN_MS, MIGRATING_RATE_KINDS, LEAST_LOAD_WEIGHTS, RECENT_SUCCESS_MS, Breaker, leastLoad, leastLoadScore, mayMigrateOn, shouldMigrate, createBindingStore, stickyPick, type BreakerEntry, type BreakerSample, type BreakerSnapshot, type BreakerState, type BindingStore, type Candidate, type ScoreContext, type SchedulerOptions, type Session, type StickyBinding, } from './scheduler.js';
+export { DEFAULT_AMD_POLICY, AccountGate, computeBudget, type AdmissionPolicy, type Budget, type BudgetInput, } from './admission.js';
+export { AMD_CONCURRENCY_KEY_ADMIT, AMD_CONCURRENCY_KEY_HARD, AMD_RPM_ACCOUNT, AMD_RPM_KEY, AMD_WINDOW_MS, amdAdmissionRpm, } from './limits.js';
 export { PROXY_ROUTES, PROXY_HEADER_PREFIX, RATE_HEADER_PREFIX, SATURATED_CODE, KeyPool, handleProxyRequest, isProxyRoute, renameRateHeaders, retryAfterSeconds, saturationBody, stripClientAuth, type Forward, type Lease, type PooledKey, type ProxyDeps, type ProxyRequest, type ProxyResponse, type ProxyRoute, } from './proxy.js';
 export { RETENTION_MS, createMetricsStore, rollupOf, shanghaiDayKey, type MetricsStore, type PriceLookup, } from './metrics.js';
 export { PER_MILLION, fallbacks, perMillion, pointsFor, type PointsUsage, type PriceInMillion, type PriceInput, } from './pricing.js';

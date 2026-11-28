@@ -35,9 +35,20 @@ import { type KeyContext, type KeyStatus } from './credentials.js';
 import type { CredentialSeam, KeyState } from './key-store.js';
 import { channelSourceFrom, type SourceFacts } from './source.js';
 export declare const VERSION = "0.0.2-rc.4";
-/** The icon prints this until a task computes the real account budget (04 section 2.2). */
-export declare const NO_BUDGET_SOURCES: readonly string[];
-export declare const NO_ADMIT_RPM = 0;
+/**
+ * The rail's second line is the account budget, and 04 section 2.2 says where that comes from:
+ * computeBudget over the admission policy, not a constant this file keeps.
+ *
+ * It used to be 0 with an empty source list, and the page printed what it was given -- "global
+ * RPM 0 (-)" on a machine that was serving. Zero is this module's most expensive possible default,
+ * because it is the one number that reads as a measurement rather than as a missing value.
+ *
+ * headerRemaining is null: the response headers of a chat request are not visible to a plugin
+ * loaded from a profile, so the 0.85 admission margin stands in for them, exactly as the gate's
+ * own start-up state does. 02 section 1.3 still owns the reading, and 04 section 6.4 still says a
+ * header can only lower this number.
+ */
+export declare const RAIL_BUDGET: import("@dsh-multipool/core").Budget;
 export interface HostOptions {
     /** Facts to publish. Defaults to NOTHING_READ: no scheduler has run, so nothing is claimed. */
     readonly facts?: Parameters<typeof channelSourceFrom>[0];
@@ -126,5 +137,5 @@ export declare function apply(ctx: {
 export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
 export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey, type AmdKeyRef, type CredentialSeam, type KeyState, type KeyWrite } from './key-store.js';
-export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, buildPublishedView, openChannel, routeOf, serveOn, type BridgeAnswer, type BridgeRequest, type BridgeResponse, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, type Route, type RouteServer, } from './channel.js';
+export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, type BridgeAnswer, type BridgeRequest, type BridgeResponse, type Channel, type ChannelHandle, type ChannelSource, type IconBudget, type OpenChannelOptions, type PublishedView, type Route, type RouteServer, } from './channel.js';
 //# sourceMappingURL=index.d.ts.map

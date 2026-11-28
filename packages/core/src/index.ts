@@ -119,6 +119,24 @@ export {
   type Session,
   type StickyBinding,
 } from './scheduler.js'
+// The budget the rail paints and the budget the gate keeps have to be one computation, or the
+// number on screen is a claim about a gate nobody runs (04 section 2.2).
+export {
+  DEFAULT_AMD_POLICY,
+  AccountGate,
+  computeBudget,
+  type AdmissionPolicy,
+  type Budget,
+  type BudgetInput,
+} from './admission.js'
+export {
+  AMD_CONCURRENCY_KEY_ADMIT,
+  AMD_CONCURRENCY_KEY_HARD,
+  AMD_RPM_ACCOUNT,
+  AMD_RPM_KEY,
+  AMD_WINDOW_MS,
+  amdAdmissionRpm,
+} from './limits.js'
 export {
   PROXY_ROUTES,
   PROXY_HEADER_PREFIX,

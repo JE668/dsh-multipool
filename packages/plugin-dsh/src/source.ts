@@ -25,6 +25,15 @@ import type { UsageAttempt } from './usage.js'
 export interface SourceHooks {
   readonly readFromSeam?: () => Promise<boolean>
   readonly testUsage?: (providerId: ProviderId) => Promise<UsageAttempt>
+  /**
+   * The live reading, or null when nobody is holding one right now (T-3-a).
+   *
+   * Facts are what the seam last said; this is what the upstream says when asked. They differ
+   * in two ways that matter here: facts never age, and facts never carry a number the host did
+   * not already owe somebody. The dashboard asks repeatedly, so it goes through this -- and so
+   * it can only exist while a set of hooks is armed, which is why it lives on SourceHooks.
+   */
+  readonly readUsage?: (providerId: ProviderId) => Promise<UsageAttempt>
 }
 
 /** What a read-only source may answer, including "I have not looked yet". */
@@ -93,6 +102,7 @@ export function channelSourceFrom(
     // spliced in when their owner supplies them and absent otherwise.
     ...(hooks?.readFromSeam === undefined ? {} : { readFromSeam: hooks.readFromSeam }),
     ...(hooks?.testUsage === undefined ? {} : { testUsage: hooks.testUsage }),
+    ...(hooks?.readUsage === undefined ? {} : { readUsage: hooks.readUsage }),
     activeSessions: () => facts.activeSessions ?? 0,
     queued: () => facts.queued ?? 0,
     nowMs,

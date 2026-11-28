@@ -4,6 +4,7 @@ import {
   CHANNEL,
   ENDPOINT_COMMAND,
   ENDPOINT_SNAPSHOT,
+  ENDPOINT_READING,
   ENDPOINT_TEST,
   NO_TEST_SOURCE,
   type BridgeRequest,
@@ -13,7 +14,7 @@ import {
   type RouteServer,
 } from '../src/channel.js'
 import { AMD_KEY_REF, KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
-import { apply } from '../src/index.js'
+import { RAIL_BUDGET, apply } from '../src/index.js'
 
 type Listener = (moved: unknown) => void
 
@@ -334,6 +335,23 @@ describe('the route is claimed where it is asked, and only for a POST', () => {
 // endpoint refused every press, and every unit test stayed green, because a test passes the source
 // itself. A test that hands in what production forgets cannot watch production forget it, so this one
 // goes the whole way: apply() -> a route the page can reach -> the test endpoint.
+describe('the rail budget comes from the formula, not from this file', () => {
+  it('is eleven, the number 04 section 2.2 would give any fresh AMD account', () => {
+    // 20 is the account ceiling, 0.85 and 1.5 are the two catalog assumptions, and the product is
+    // floored at 16.666 -- so eleven. If a coefficient ever changes, this is the test to argue with;
+    // the alternative was a page that quietly printed the old number for a year.
+    expect(RAIL_BUDGET.admitRpm).toBe(11)
+    expect(RAIL_BUDGET.sources[0]).toBe('min(20,30)*0.85/1.5=11')
+  })
+
+  it('carries the formula as a source, because the rail prints it beside the number', () => {
+    // rpmLine() shows sources[0] verbatim (docs/05 section 2.3). A budget with no source prints a
+    // dash there, and a dash beside eleven reads as "we do not know why" rather than "we did not say".
+    expect(RAIL_BUDGET.sources.length).toBeGreaterThan(0)
+    expect(RAIL_BUDGET.sources[0]).toContain('*0.85/1.5')
+  })
+})
+
 describe('the route the page actually reaches', () => {
   it('answers the test endpoint with a source, because apply() hands one to the route', async () => {
     const { context, effects, server } = contextOf({ hasInject: true })
@@ -559,3 +577,44 @@ describe('the host half hands writes to the page, and performs none itself', () 
   })
 })
 
+
+describe('the dashboard asks the same question the button asks', () => {
+  it('answers ENDPOINT_READING with an attempt, not with a refusal', async () => {
+    const { context, effects, server } = contextOf({ hasInject: true })
+    apply(context, { server })
+    const disposers = effects.map(effect => effect())
+    const answered = (await server.ask(ENDPOINT_READING, undefined)) as {
+      ok: boolean
+      value?: { providerId: string; said: string; tooSoon: boolean }
+      error?: { code: string }
+    }
+    // The endpoint exists, so the first thing to pin is that it is not the NO_TEST_SEAM /
+    // NO_TEST_SOURCE fall-through wearing a different name: a refusal answers ok:false.
+    expect(answered.error).toBeUndefined()
+    expect(answered.ok).toBe(true)
+    expect(answered.value?.providerId).toBe('amd')
+    // Nothing is armed here, so the attempt says so and asks nothing: the sentence names the
+    // missing value, and tooSoon is false because no floor was met, only a music stand.
+    expect(answered.value?.said).toBe('upstream unreachable: no AMD_API_KEY is stored, so there was nothing to send')
+    expect(answered.value?.tooSoon).toBe(false)
+    for (const dispose of disposers) dispose()
+  })
+
+  it('shares the press floor, so a poll inside the minute is carried, not a second request', async () => {
+    const { context, effects, server, seam } = contextOf({ hasInject: true, configured: true })
+    apply(context, { server })
+    const disposers = effects.map(effect => effect())
+    const first = (await server.ask(ENDPOINT_READING, undefined)) as {
+      value?: { tooSoon: boolean; carried?: boolean }
+    }
+    expect(first.value?.tooSoon).toBe(false)
+    // Between the two asks, pretend a reading landed: the poll must reuse it rather than dial
+    // out again. Usage is stamped by the press path, so it is set the way the press sets it.
+    seam.resolve = async () => ({ value: 'rc-' + 'b'.repeat(32) })
+    const second = (await server.ask(ENDPOINT_READING, undefined)) as {
+      value?: { tooSoon: boolean; carried?: boolean }
+    }
+    expect(second.value?.tooSoon).toBe(true)
+    for (const dispose of disposers) dispose()
+  })
+})

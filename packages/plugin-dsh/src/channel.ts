@@ -94,6 +94,17 @@ export const ENDPOINT_COMMAND = 'command'
  * taken here to mean "ask the upstream once, on purpose" and documented as such.
  */
 export const ENDPOINT_TEST = 'test'
+
+/**
+ * T-3-a's dashboard reading, as opposed to T-2-f's pressed one.
+ *
+ * The same question asked by a timer instead of a person, so it gets its own name: a dashboard
+ * that re-renders every few seconds must not be able to look like someone pressed Test, and a
+ * press must not be told a poll is waiting. Both go through sources.readUsage and both sit under
+ * the same sixty-second floor, because that floor belongs to the upstream, not to the surface
+ * that happened to notice it.
+ */
+export const ENDPOINT_READING = 'reading'
 /**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
@@ -171,6 +182,14 @@ export interface ChannelSource {
    * conclusion nobody asked for.
    */
   readonly readFromSeam?: () => Promise<boolean>
+  /**
+   * The same reading as testUsage, asked by a timer rather than a hand (T-3-a).
+   *
+   * A separate name because the two callers are separate promises: a poll inside the minute gets
+   * the carried reading back (tooSoon false, carried true) rather than a refusal, so a dashboard
+   * always has the last number it saw to draw. No new request, no new cost -- usage.ts decides that.
+   */
+  readonly readUsage?: (providerId: ProviderId) => Promise<UsageAttempt>
 }
 
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
@@ -452,6 +471,32 @@ export function answerOf(
           : undefined
       const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd'
       return { ok: true as const, value: await source.testUsage(providerId as ProviderId) }
+    }
+    if (endpoint === ENDPOINT_READING && source !== undefined && source.readUsage !== undefined) {
+      const asked =
+        payload !== null && typeof payload === 'object'
+          ? (payload as Record<string, unknown>)[TEST_PROVIDER]
+          : undefined
+      const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd'
+      return { ok: true as const, value: await source.readUsage(providerId as ProviderId) }
+    }
+    if (endpoint === ENDPOINT_READING) {
+      // Its own refusal, and a different causal claim than the test one makes: readUsage missing
+      // means the timer's door was never fitted, so nothing was asked -- and reading.ts is the only
+      // caller, which is why this is still ok:false rather than a reading of null.
+      if (source !== undefined) {
+        return {
+          ok: false as const,
+          error: {
+            code: NO_TEST_SEAM,
+            message: 'this host has a source but no one in it can read an upstream',
+          },
+        }
+      }
+      return {
+        ok: false as const,
+        error: { code: NO_TEST_SOURCE, message: 'this host cannot read an upstream anything' },
+      }
     }
     if (endpoint === ENDPOINT_TEST) {
       // Reached only when the wiring above declined to match. Which of the two it was is the whole

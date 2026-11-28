@@ -31,7 +31,9 @@
  */
 
 import {
+  DEFAULT_AMD_POLICY,
   USAGE_POLL_FLOOR_MS,
+  computeBudget,
   createSystemClock,
   type Account,
   type ProviderId,
@@ -65,9 +67,20 @@ import { readAmdUsage, withProviderUsage, type UsageAttempt } from './usage.js'
 
 export const VERSION = '0.0.2-rc.4'
 
-/** The icon prints this until a task computes the real account budget (04 section 2.2). */
-export const NO_BUDGET_SOURCES: readonly string[] = []
-export const NO_ADMIT_RPM = 0
+/**
+ * The rail's second line is the account budget, and 04 section 2.2 says where that comes from:
+ * computeBudget over the admission policy, not a constant this file keeps.
+ *
+ * It used to be 0 with an empty source list, and the page printed what it was given -- "global
+ * RPM 0 (-)" on a machine that was serving. Zero is this module's most expensive possible default,
+ * because it is the one number that reads as a measurement rather than as a missing value.
+ *
+ * headerRemaining is null: the response headers of a chat request are not visible to a plugin
+ * loaded from a profile, so the 0.85 admission margin stands in for them, exactly as the gate's
+ * own start-up state does. 02 section 1.3 still owns the reading, and 04 section 6.4 still says a
+ * header can only lower this number.
+ */
+export const RAIL_BUDGET = computeBudget({ policy: DEFAULT_AMD_POLICY, headerRemaining: null })
 
 export interface HostOptions {
   /** Facts to publish. Defaults to NOTHING_READ: no scheduler has run, so nothing is claimed. */
@@ -377,9 +390,26 @@ export function apply(
           facts,
           () => readSeamNow(seam, facts, onKeyStatus),
         ),
+      // The dashboard's timer asks the same question a press asks, through the same function, so
+      // both are floored by the one lastAttemptMs. What differs is who is waiting: a page that polls
+      // gets a carried reading inside the minute (usage.ts returns `previous` with carried: true)
+      // rather than a refusal, which is why this is not a "you may not" -- there is nothing here to
+      // gate that the upstream floor does not already gate.
+      readUsage: (providerId: ProviderId) =>
+        askUsage(
+          providerId,
+          seam,
+          nowMs,
+          () => lastAttemptMs,
+          stamp => {
+            lastAttemptMs = stamp
+          },
+          facts,
+          () => readSeamNow(seam, facts, onKeyStatus),
+        ),
     }
     const source: ChannelSource = channelSourceFrom(facts, nowMs, hooks)
-    const budget: IconBudget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES }
+    const budget: IconBudget = RAIL_BUDGET
     const channel = openChannel({ source, budget })
     const drops: Array<() => void> = []
 
@@ -440,7 +470,9 @@ export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey,
 export {
   CHANNEL,
   ENDPOINT_COMMAND,
+  ENDPOINT_READING,
   ENDPOINT_SNAPSHOT,
+  ENDPOINT_TEST,
   answerOf,
   buildPublishedView,
   openChannel,

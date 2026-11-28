@@ -70,6 +70,16 @@ export const ENDPOINT_COMMAND = 'command';
  */
 export const ENDPOINT_TEST = 'test';
 /**
+ * T-3-a's dashboard reading, as opposed to T-2-f's pressed one.
+ *
+ * The same question asked by a timer instead of a person, so it gets its own name: a dashboard
+ * that re-renders every few seconds must not be able to look like someone pressed Test, and a
+ * press must not be told a poll is waiting. Both go through sources.readUsage and both sit under
+ * the same sixty-second floor, because that floor belongs to the upstream, not to the surface
+ * that happened to notice it.
+ */
+export const ENDPOINT_READING = 'reading';
+/**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
  */
@@ -241,6 +251,31 @@ export function answerOf(handle, source) {
                 : undefined;
             const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd';
             return { ok: true, value: await source.testUsage(providerId) };
+        }
+        if (endpoint === ENDPOINT_READING && source !== undefined && source.readUsage !== undefined) {
+            const asked = payload !== null && typeof payload === 'object'
+                ? payload[TEST_PROVIDER]
+                : undefined;
+            const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd';
+            return { ok: true, value: await source.readUsage(providerId) };
+        }
+        if (endpoint === ENDPOINT_READING) {
+            // Its own refusal, and a different causal claim than the test one makes: readUsage missing
+            // means the timer's door was never fitted, so nothing was asked -- and reading.ts is the only
+            // caller, which is why this is still ok:false rather than a reading of null.
+            if (source !== undefined) {
+                return {
+                    ok: false,
+                    error: {
+                        code: NO_TEST_SEAM,
+                        message: 'this host has a source but no one in it can read an upstream',
+                    },
+                };
+            }
+            return {
+                ok: false,
+                error: { code: NO_TEST_SOURCE, message: 'this host cannot read an upstream anything' },
+            };
         }
         if (endpoint === ENDPOINT_TEST) {
             // Reached only when the wiring above declined to match. Which of the two it was is the whole

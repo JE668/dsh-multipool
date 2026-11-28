@@ -51,6 +51,7 @@ export function channelSourceFrom(facts, nowMs, hooks) {
         // spliced in when their owner supplies them and absent otherwise.
         ...(hooks?.readFromSeam === undefined ? {} : { readFromSeam: hooks.readFromSeam }),
         ...(hooks?.testUsage === undefined ? {} : { testUsage: hooks.testUsage }),
+        ...(hooks?.readUsage === undefined ? {} : { readUsage: hooks.readUsage }),
         activeSessions: () => facts.activeSessions ?? 0,
         queued: () => facts.queued ?? 0,
         nowMs,

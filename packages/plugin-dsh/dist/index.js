@@ -29,15 +29,26 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
-import { USAGE_POLL_FLOOR_MS, createSystemClock, } from './vendor/core/index.js';
+import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClock, } from './vendor/core/index.js';
 import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
 import { readAmdUsage, withProviderUsage } from './usage.js';
 export const VERSION = '0.0.2-rc.4';
-/** The icon prints this until a task computes the real account budget (04 section 2.2). */
-export const NO_BUDGET_SOURCES = [];
-export const NO_ADMIT_RPM = 0;
+/**
+ * The rail's second line is the account budget, and 04 section 2.2 says where that comes from:
+ * computeBudget over the admission policy, not a constant this file keeps.
+ *
+ * It used to be 0 with an empty source list, and the page printed what it was given -- "global
+ * RPM 0 (-)" on a machine that was serving. Zero is this module's most expensive possible default,
+ * because it is the one number that reads as a measurement rather than as a missing value.
+ *
+ * headerRemaining is null: the response headers of a chat request are not visible to a plugin
+ * loaded from a profile, so the 0.85 admission margin stands in for them, exactly as the gate's
+ * own start-up state does. 02 section 1.3 still owns the reading, and 04 section 6.4 still says a
+ * header can only lower this number.
+ */
+export const RAIL_BUDGET = computeBudget({ policy: DEFAULT_AMD_POLICY, headerRemaining: null });
 /** The store's answer, turned into what the page's command() hands back. */
 function outcomeOf(result) {
     const status = result.status;
@@ -258,9 +269,17 @@ export function apply(ctx, options = {}) {
             testUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
                 lastAttemptMs = stamp;
             }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
+            // The dashboard's timer asks the same question a press asks, through the same function, so
+            // both are floored by the one lastAttemptMs. What differs is who is waiting: a page that polls
+            // gets a carried reading inside the minute (usage.ts returns `previous` with carried: true)
+            // rather than a refusal, which is why this is not a "you may not" -- there is nothing here to
+            // gate that the upstream floor does not already gate.
+            readUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
+                lastAttemptMs = stamp;
+            }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
         };
         const source = channelSourceFrom(facts, nowMs, hooks);
-        const budget = { admitRpm: NO_ADMIT_RPM, sources: NO_BUDGET_SOURCES };
+        const budget = RAIL_BUDGET;
         const channel = openChannel({ source, budget });
         const drops = [];
         const server = options.server;
@@ -306,5 +325,5 @@ export function apply(ctx, options = {}) {
 export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
-export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_SNAPSHOT, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
+export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
 //# sourceMappingURL=index.js.map
