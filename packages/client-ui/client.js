@@ -234,6 +234,12 @@ window.__ModuleLoader__.load({
       dashboardLabel: '\u6c60\u6f0f\u770b\u677f',
       dashboardOff: '\u6c60\u6f0f\u770b\u677f\uff08\u9ed8\u8ba4\u4e0d\u63a2\u8f6c\uff0c\u53ea\u5728\u628f\u5f15\u7bb1\u91cc\u770b\uff09',
       dashboardOn: '\u6c60\u6f0f\u770b\u677f\uff08\u5df2\u63a2\u8f6c\u70b9\uff09',
+      // T-8-e: Google settings group. No account-RPM input (Google has no usage endpoint),
+      // just prefix hint + PT timezone display + collapsed default.
+      googleLabel: '\u767E\u5229 (Google)',
+      googleIntro: '\u4f7f\u7528 OpenAI \u529f\u80fd\u754c\u9762\u6240\u6709\u7684\u6a21\u578b\u90fd\u662f Google \u5361\u724c\u3002\u5b8c\u6574\u529f\u80fd\u89c4\u5219\u9700\u8981\u8bb0\u8f93 /v1/usage \u65e5\u5206\u91cf\uff0c\u4f46 Google \u672a\u5f97\u624d\u8fbe\u53ea\u662f\u6240\u6709\u6a21\u578b\u53d6\u503c\u3002',
+      googlePrefixHint: 'API Key \u987a\u7f00\u4e3a AIza\u3002',
+      googleTimezone: '\u65e5\u5206 \u8fde\u6566 \u65f6\u5c40: Pacific Time (America/Los_Angeles)\uff0c\u6bcf\u591d 00:00 PT\u91cd\u7b2c\u3002',
     }
 
     /**
@@ -1063,6 +1069,22 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * T-8-e: Google settings group. Fifth slot, collapsed by default. No key input field --
+     * Google keys carry their own prefix hint (AIza...) and there is no usage endpoint, so
+     * nothing to save and nothing to read. Just prefix hint + PT timezone display.
+     */
+    function GoogleSettings() {
+      return React.createElement(
+        'div',
+        { style: settingsStyles.root },
+        React.createElement('div', { key: 'title', style: settingsStyles.title }, SETTINGS.googleLabel),
+        React.createElement('div', { key: 'intro', style: settingsStyles.note }, SETTINGS.googleIntro),
+        React.createElement('div', { key: 'prefix', style: settingsStyles.note }, SETTINGS.googlePrefixHint),
+        React.createElement('div', { key: 'timezone', style: settingsStyles.note }, SETTINGS.googleTimezone),
+      )
+    }
+
+    /**
      * The settings section's state and its three edge-crossings.
      *
      * Returns a plain object rather than living in a component body so a test can drive it without
@@ -1835,6 +1857,21 @@ window.__ModuleLoader__.load({
                 label: PANEL_LABEL,
               },
               MultiPoolSettings,
+            ),
+          ),
+        )
+        // T-8-e: Google settings group, fifth slot (order 50). Nothing to save, nothing to read --
+        // just prefix hint and PT timezone display.
+        ctx.slots.inject('settings.section', () =>
+          ctx.effect(() =>
+            ctx.slots.register(
+              {
+                name: 'settings.section',
+                id: 'dsh-multipool-google',
+                order: 50,
+                label: SETTINGS.googleLabel,
+              },
+              GoogleSettings,
             ),
           ),
         )

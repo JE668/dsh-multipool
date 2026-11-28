@@ -173,9 +173,10 @@ describe('client.js carries the same arithmetic as icon-state.ts', () => {
       },
     }
     const dispose = drawer.apply(ctx)
-    expect(registered.map((r) => r.name)).toEqual(['sidebar.panellist', 'main', 'settings.section'])
+    expect(registered.map((r) => r.name)).toEqual(['sidebar.panellist', 'main', 'settings.section', 'settings.section'])
     expect(registered[0]?.id).toBe(registered[1]?.key)
     expect(registered[2]?.id).toBe(registered[0]?.id)
+    expect(registered[3]?.id).toBe('dsh-multipool-google')
     void dispose
   })
 })
