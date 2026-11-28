@@ -293,7 +293,7 @@ export function apply(ctx, options = {}) {
                 return;
             drops.push(reportKeyInto(child, facts, onKeyStatus));
             // The write half is handed to the page, not used here. apply() still writes nothing itself.
-            if (options.acceptsWrites === true)
+            if (options.acceptsWrites !== false)
                 channel.offer(writesFor(seam));
         }));
         return () => {

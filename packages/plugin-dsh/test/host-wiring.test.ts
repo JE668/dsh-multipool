@@ -544,10 +544,10 @@ describe('the host half hands writes to the page, and performs none itself', () 
     for (const dispose of disposers) dispose()
   })
 
-  it('stays closed to writes when the host is not asked to accept them', async () => {
+  it('stays closed to writes when the embedder says so, though the default is open', async () => {
     const { context, effects, injections } = contextOf({ hasInject: true })
     const server = new FakeServer()
-    apply(context, { server })
+    apply(context, { server, acceptsWrites: false })
     const disposers = effects.map(effect => effect())
     expect(injections).toEqual(['credentials'])
     expect(typeof server.routes.get(CHANNEL)?.handler).toBe('function')

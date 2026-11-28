@@ -49,10 +49,15 @@ export interface HostOptions {
      */
     readonly onKeyStatus?: (status: KeyStatus) => void;
     /**
-     * Offer the write half to the page's command() (T-2-e). Off unless asked for.
+     * Offer the write half to the page's command() (T-2-e). On by default as of T-2-f.
      *
-     * A host that takes no writes never resolves `credentials` at all, so an install without a
-     * credential provider stays absent from it instead of being described as missing one.
+     * The settings page has shipped and the save button is real, so the write half is no longer a
+     * promise about a surface that does not exist: docs/06 T-2-f asks for it to be on in the same
+     * commit the button lands in, and this is the commit that decides it.
+     *
+     * Pass `false` to keep it off -- a test of a read-only install, or an embedder that vouches
+     * for its own credentials and does not want this plugin holding a write path. The injection still
+     * happens (the icon still needs it), it just carries no `writes` offer.
      */
     readonly acceptsWrites?: boolean;
     /**
