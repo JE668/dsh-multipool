@@ -163,6 +163,6 @@ export function sourcedNumberFromWire(value) {
         return null;
     if (typeof record['source'] !== 'string')
         return null;
-    return record;
+    return { value: record['value'], source: record['source'] };
 }
 //# sourceMappingURL=snapshot.js.map

@@ -296,5 +296,5 @@ export function sourcedNumberFromWire(value: unknown): Sourced<number> | null {
   const record = value as Record<string, unknown>
   if (typeof record['value'] !== 'number' || !Number.isFinite(record['value'])) return null
   if (typeof record['source'] !== 'string') return null
-  return record as unknown as Sourced<number>
+  return { value: record['value'] as number, source: record['source'] as Sourced<number>['source'] }
 }

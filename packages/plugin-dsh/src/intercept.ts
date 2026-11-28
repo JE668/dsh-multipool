@@ -35,9 +35,11 @@ import {
   type MinuteHeat,
 } from '@dsh-multipool/core'
 import type { SourceHooks } from './source.js'
+import type { SourceFacts } from './source.js'
 import type { UsageAttempt } from './usage.js'
 import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js'
 import { AMD_KEY_REF_NAME } from './channel.js'
+import type { KeyStatus } from './credentials.js'
 import type { UsageResult } from '@dsh-multipool/core'
 import type { CredentialSeam, KeyState } from './key-store.js'
 
@@ -67,6 +69,16 @@ export interface InterceptContext {
   readonly llm: {
     stream: (options: { provider: string; model: string; messages: unknown[]; signal?: AbortSignal }) => AsyncIterable<unknown>
   }
+}
+
+export interface InterceptStreamOptions {
+  readonly provider: string
+  readonly model: string
+  readonly messages: unknown[]
+  readonly signal?: AbortSignal
+  readonly baseUrl?: string
+  readonly body?: unknown
+  readonly headers?: Record<string, string>
 }
 
 export function createIntercept(
@@ -138,7 +150,7 @@ export function createIntercept(
 
   // 8) LLM waterfall intercept - THIS IS THE KEY PART
   const originalStream = ctx.llm.stream
-  ctx.llm.stream = async function* (options: any) {
+  ctx.llm.stream = async function* (options: InterceptStreamOptions) {
     // Only intercept AMD provider requests
     if (options.provider === 'amd') {
       // Gate admission (record the budget but don't wait yet - step 1 is read-only)
@@ -225,7 +237,7 @@ export function createIntercept(
         status: responseStatus,
         latencyMs,
         attempt: 1,
-        promptTokens: countPromptTokens(options.messages),
+        promptTokens: countPromptTokens(options.messages as { role?: string; content?: string | { type?: string; text?: string }[] }[]),
         completionTokens: 0,
         rateKind: rateKind ?? undefined,
         queueWaitMs,
@@ -282,8 +294,8 @@ function injectSeam(
 // Helper: read seam now
 async function readSeamNow(
   seam: CredentialSeam | undefined,
-  facts: any,
-  onRead?: (status: any) => void,
+  facts: SourceFacts,
+  onRead?: (status: KeyStatus) => void,
 ): Promise<boolean> {
   if (seam === undefined) return false
   const { readKeyStatus, AMD_KEY_REF } = await import('./credentials.js')
@@ -321,7 +333,7 @@ async function askUsage(
   nowMs: () => number,
   lastAttemptMs: () => number | undefined,
   stamp: (atMs: number) => void,
-  facts: any,
+  facts: SourceFacts,
   readFromSeam: () => Promise<boolean>,
 ): Promise<UsageAttempt> {
   const stale = lastAttemptMs()
@@ -357,7 +369,10 @@ async function getKeyFromSeam(seam: CredentialSeam | undefined): Promise<{ accou
 }
 
 // Helper: build forward headers
-async function buildForwardHeaders(options: any, keyFrame: any): Promise<Record<string, string>> {
+async function buildForwardHeaders(
+  options: { headers?: Record<string, string> },
+  keyFrame: { secret: string } | null,
+): Promise<Record<string, string>> {
   const { stripClientAuth } = await import('@dsh-multipool/core')
   const forwarded = stripClientAuth(options.headers ?? {})
   if (keyFrame) {
@@ -375,7 +390,7 @@ function parseHeaderRemaining(headers: Record<string, string>): number | null {
 }
 
 // Helper: count prompt tokens (rough estimate)
-function countPromptTokens(messages: any[]): number {
+function countPromptTokens(messages: { role?: string; content?: string | { type?: string; text?: string }[] }[]): number {
   if (!messages || !messages.length) return 0
   let total = 0
   for (const m of messages) {

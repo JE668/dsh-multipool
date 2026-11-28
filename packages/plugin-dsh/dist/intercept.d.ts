@@ -48,5 +48,14 @@ export interface InterceptContext {
         }) => AsyncIterable<unknown>;
     };
 }
+export interface InterceptStreamOptions {
+    readonly provider: string;
+    readonly model: string;
+    readonly messages: unknown[];
+    readonly signal?: AbortSignal;
+    readonly baseUrl?: string;
+    readonly body?: unknown;
+    readonly headers?: Record<string, string>;
+}
 export declare function createIntercept(ctx: InterceptContext, options?: InterceptOptions): InterceptHandle;
 //# sourceMappingURL=intercept.d.ts.map

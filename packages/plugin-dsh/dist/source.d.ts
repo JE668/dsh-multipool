@@ -70,38 +70,15 @@ export interface SourceHooks {
 }
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
-    readonly accounts: readonly Account[] | undefined;
-    readonly events: readonly MetricsEvent[] | undefined;
-    readonly usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined;
-    readonly activeSessions: number | undefined;
-    readonly queued: number | undefined;
-    /**
-     * The credential seam itself, when one is armed (T-2-f).
-     *
-     * Handed along so the page can ask it to make one request -- the usage read -- without the key
-     * leaving the process that already holds it. Absent on an install with no provider, which is the
-     * same absence the icon paints.
-     */
-    readonly seam?: unknown;
-    /**
-     * Which layer answered when the key was last read, or absent when nobody has read it.
-     *
-     * It sits beside `accounts` rather than inside them because it is a fact about the seam, not
-     * about the accounts: `accountFrom()` will not put a layer on an Account, and a settings page that
-     * wanted one would have to be handed it anyway. Absent when nobody looked, so a page can say "no
-     * one has read" instead of "the file", which it would merely be guessing.
-     */
-    readonly keyLayer: string | undefined;
-    /**
-     * Step 2 gate toggle: the settings section flips this, and the intercept layer reads it
-     * on every AMD request. Absent means "off" (read-only).
-     */
-    readonly rejectOnBudgetExhausted?: boolean;
-    /**
-     * Step 3C gate toggle: the settings section flips this, and the panel reads it to decide
-     * whether to open the shell immersion overlay instead of the drawer-only panel. Absent means off.
-     */
-    readonly dashboardMode?: boolean;
+    accounts: readonly Account[] | undefined;
+    events: readonly MetricsEvent[] | undefined;
+    usage: Readonly<Partial<Record<ProviderId, UsageResult | null>>> | undefined;
+    activeSessions: number | undefined;
+    queued: number | undefined;
+    seam?: unknown;
+    keyLayer: string | undefined;
+    rejectOnBudgetExhausted?: boolean;
+    dashboardMode?: boolean;
 }
 /** A source that has nothing to report yet: every member is absent, none is zero. */
 export declare const NOTHING_READ: SourceFacts;
