@@ -858,6 +858,11 @@ window.__ModuleLoader__.load({
         lineHeight: '18px',
         whiteSpace: 'pre-wrap',
       },
+      googleRoot: {
+        marginTop: 16,
+        paddingTop: 12,
+        borderTop: '1px solid var(--dsw-alias-border-secondary)',
+      },
       where: {
         color: 'var(--dsw-alias-label-secondary)',
         fontSize: 12,
@@ -1065,25 +1070,21 @@ window.__ModuleLoader__.load({
           dashboardOn ? SETTINGS.dashboardOn : SETTINGS.dashboardOff,
         ),
         React.createElement('div', { key: 'care', style: settingsStyles.note }, SETTINGS.note),
+        // T-8-e: Google settings subsection inside the same dsh-multipool section. Nothing to
+        // save, nothing to read -- just prefix hint and PT timezone display. All provider settings
+        // live under one section so the reader sees them together.
+        React.createElement(
+          'div',
+          { key: 'google', style: settingsStyles.googleRoot },
+          React.createElement('div', { key: 'title', style: settingsStyles.title }, SETTINGS.googleLabel),
+          React.createElement('div', { key: 'intro', style: settingsStyles.note }, SETTINGS.googleIntro),
+          React.createElement('div', { key: 'prefix', style: settingsStyles.note }, SETTINGS.googlePrefixHint),
+          React.createElement('div', { key: 'timezone', style: settingsStyles.note }, SETTINGS.googleTimezone),
+        ),
       )
     }
 
     /**
-     * T-8-e: Google settings group. Fifth slot, collapsed by default. No key input field --
-     * Google keys carry their own prefix hint (AIza...) and there is no usage endpoint, so
-     * nothing to save and nothing to read. Just prefix hint + PT timezone display.
-     */
-    function GoogleSettings() {
-      return React.createElement(
-        'div',
-        { style: settingsStyles.root },
-        React.createElement('div', { key: 'title', style: settingsStyles.title }, SETTINGS.googleLabel),
-        React.createElement('div', { key: 'intro', style: settingsStyles.note }, SETTINGS.googleIntro),
-        React.createElement('div', { key: 'prefix', style: settingsStyles.note }, SETTINGS.googlePrefixHint),
-        React.createElement('div', { key: 'timezone', style: settingsStyles.note }, SETTINGS.googleTimezone),
-      )
-    }
-
     /**
      * The settings section's state and its three edge-crossings.
      *
@@ -1860,18 +1861,6 @@ window.__ModuleLoader__.load({
             locale: 'dsh-multipool',
           },
           MultiPoolSettings,
-        )
-        // T-8-e: Google settings group, fifth slot (order 50). Nothing to save, nothing to read --
-        // just prefix hint and PT timezone display.
-        ctx.slots.register(
-          {
-            name: 'settings.section',
-            id: 'dsh-multipool-google',
-            order: 50,
-            label: () => SETTINGS.googleLabel,
-            locale: 'dsh-multipool',
-          },
-          GoogleSettings,
         )
       },
       // Held out to the tests so icon-state.test.ts can put this copy and the TypeScript one
