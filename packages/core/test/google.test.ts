@@ -5,6 +5,7 @@ import {
   googleBackoff,
   GOOGLE_KEY_PREFIX,
   GOOGLE_QUOTA_TIMEZONE,
+  GOOGLE_FETCH_USAGE,
   stripModelsPrefix,
   addModelsPrefix,
 } from '../src/index.js'
@@ -137,5 +138,13 @@ describe('T-8-c: Google 429 quotaId parsing — local rate limit vs upstream quo
 
   it('429 with empty body → rate_opaque', () => {
     expect(classifyGoogle({ status: 429, headers: {}, body: '' })).toBe('rate_opaque')
+  })
+})
+
+describe('T-8-d: Google fetchUsage returns no-endpoint', () => {
+  it('googleFetchUsage returns available:false, reason no-endpoint', async () => {
+    const result = await GOOGLE_FETCH_USAGE('any-key')
+    expect(result.available).toBe(false)
+    expect(result.reason).toBe('no-endpoint')
   })
 })

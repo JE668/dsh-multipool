@@ -14,6 +14,12 @@ import type { AdapterResponse, Backoff, HeaderSnapshot, RateClass, UsageResult }
 export const GOOGLE_KEY_PREFIX = 'AIza'
 export const GOOGLE_QUOTA_TIMEZONE = 'America/Los_Angeles'
 
+/** T-8-d: Google has no usage endpoint. Every call reports 'no-endpoint' so callers never
+ *  guess a balance from /v1beta/models or any other path. */
+export async function googleFetchUsage(_key: string): Promise<UsageResult> {
+  return { available: false, reason: 'no-endpoint' }
+}
+
 function parseGoogleError(body: string): { message: string | null; code: string | null; quotaId: string | null } {
   try {
     const json = JSON.parse(body)
@@ -75,7 +81,7 @@ export function googleReadHeaders(res: AdapterResponse): HeaderSnapshot | null {
   return null
 }
 
-export const GOOGLE_FETCH_USAGE: undefined = undefined
+export { googleFetchUsage as GOOGLE_FETCH_USAGE }
 
 export function googleEmptyCatalog(): { ok: true; models: []; fetchedAt: string } {
   return { ok: true, models: [], fetchedAt: new Date().toISOString() }
