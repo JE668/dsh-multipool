@@ -29,6 +29,10 @@ import {
   READING_ROWS,
   rowsOf,
   trendOf,
+  concurrencyOf,
+  heatOf,
+  type MinuteConcurrency,
+  type MinuteHeat,
 } from '@dsh-multipool/core'
 import type { SourceHooks } from './source.js'
 import type { UsageAttempt } from './usage.js'
@@ -111,9 +115,12 @@ export function createIntercept(
       askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => { lastAttemptMs = stamp }, facts, () => readSeamNow(seam, facts, undefined)),
     readDashboard: () => {
       const events = facts.events ?? []
+      const now = nowMs()
       return {
-        trend: trendOf(events, nowMs(), READING_MINUTES),
+        trend: trendOf(events, now, READING_MINUTES),
         rows: rowsOf(events, READING_ROWS),
+        concurrency: concurrencyOf(events, now, READING_MINUTES),
+        heat: heatOf(events, now, READING_MINUTES),
       }
     },
     diagnose: (providerId: ProviderId) =>

@@ -210,6 +210,12 @@ export {
   type DetailRow,
 } from './amd-table.js'
 export {
+  concurrencyOf,
+  heatOf,
+  type MinuteConcurrency,
+  type MinuteHeat,
+} from './amd-concurrency.js'
+export {
   PLOT_HEIGHT,
   PLOT_WIDTH,
   trendFigureOf,

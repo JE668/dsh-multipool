@@ -472,7 +472,12 @@ window.__ModuleLoader__.load({
           measured += 1
         }
       }
-      return { trend: trend, measured: measured }
+      return {
+        trend: trend,
+        measured: measured,
+        concurrency: hourItem.concurrency === undefined ? [] : hourItem.concurrency,
+        heat: hourItem.heat === undefined ? [] : hourItem.heat,
+      }
     }
 
     var COMMAND_FAILED = 'command failed'
@@ -581,6 +586,111 @@ window.__ModuleLoader__.load({
         )
       }
       if (current.length > 0) runs.push(current)
+      return runs.map(function (run) {
+        return run.join(' ')
+      })
+    }
+
+    /**
+     * The same hour's worst concurrency seen at send time. A minute whose every request carried no
+     * concurrency figure is a hole: drawing across it would claim zero concurrency at a moment we
+     * never measured (docs/07 U-08).
+     */
+    function plotConcurrencyRunsOf(concurrency) {
+      var plotWidth = PLOT_WIDTH - PLOT_PAD_X * 2
+      var plotHeight = PLOT_HEIGHT - PLOT_PAD_Y * 2
+      var span = Math.max(1, concurrency.length - 1)
+      var maxConcurrency = 0
+      for (var index = 0; index < concurrency.length; index += 1) {
+        var point = concurrency[index]
+        if (
+          point !== undefined &&
+          point !== null &&
+          typeof point.maxConcurrency === 'number' &&
+          isFinite(point.maxConcurrency) &&
+          point.maxConcurrency > maxConcurrency
+        ) {
+          maxConcurrency = point.maxConcurrency
+        }
+      }
+      var scale = maxConcurrency === 0 ? 0 : plotHeight / maxConcurrency
+      var runs = []
+      var current = []
+      for (var index = 0; index < concurrency.length; index += 1) {
+        var point = concurrency[index]
+        if (
+          point === undefined ||
+          point === null ||
+          typeof point.maxConcurrency !== 'number' ||
+          !isFinite(point.maxConcurrency)
+        ) {
+          if (current.length > 0) runs.push(current)
+          current = []
+          continue
+        }
+        current.push(
+          plotUnits(PLOT_PAD_X + (index / span) * plotWidth) +
+            ',' +
+            plotUnits(PLOT_PAD_Y + (scale === 0 ? plotHeight : plotHeight - point.maxConcurrency * scale)),
+        )
+      }
+      if (current.length > 0) runs.push(current)
+      return runs.map(function (run) {
+        return run.join(' ')
+      })
+    }
+
+    /**
+     * Queue-wait heat: one polyline per logarithmic bucket (0-1s / 1-5s / 5-30s / 30s+), each minute
+     * stacked as its count in that bucket. A minute with no measurement at all breaks every run,
+     * because the page did not see anything there (docs/07 U-08).
+     */
+    function plotHeatRunsOf(heat) {
+      var plotWidth = PLOT_WIDTH - PLOT_PAD_X * 2
+      var plotHeight = PLOT_HEIGHT - PLOT_PAD_Y * 2
+      var span = Math.max(1, heat.length - 1)
+      var buckets = ['0-1s', '1-5s', '5-30s', '30s+']
+      var maxCount = 0
+      for (var index = 0; index < heat.length; index += 1) {
+        var minute = heat[index]
+        if (minute === undefined || minute === null) continue
+        for (var b = 0; b < buckets.length; b += 1) {
+          var count = minute.buckets[buckets[b]]
+          if (typeof count === 'number' && isFinite(count) && count > maxCount) maxCount = count
+        }
+      }
+      var scale = maxCount === 0 ? 0 : plotHeight / maxCount
+      var seen = []
+      for (var index = 0; index < heat.length; index += 1) {
+        var minute = heat[index]
+        seen[index] =
+          minute !== undefined &&
+          minute !== null &&
+          buckets.some(function (b) {
+            var count = minute.buckets[b]
+            return typeof count === 'number' && isFinite(count) && count > 0
+          })
+      }
+      var runs = []
+      for (var b = 0; b < buckets.length; b += 1) {
+        var current = []
+        for (var index = 0; index < heat.length; index += 1) {
+          if (!seen[index]) {
+            if (current.length > 0) runs.push(current)
+            current = []
+            continue
+          }
+          var minute = heat[index]
+          var count = minute.buckets[buckets[b]]
+          current.push(
+            plotUnits(PLOT_PAD_X + (index / span) * plotWidth) +
+              ',' +
+              plotUnits(PLOT_PAD_Y + (scale === 0 ? plotHeight : plotHeight - count * scale)),
+          )
+        }
+        if (current.length > 0) runs.push(current)
+        current = []
+      }
       return runs.map(function (run) {
         return run.join(' ')
       })
@@ -1376,6 +1486,64 @@ window.__ModuleLoader__.load({
               })
             }),
           )
+      const concRuns = folded === null ? [] : plotConcurrencyRunsOf(folded.concurrency)
+      const concCurve = concRuns.length === 0
+        ? React.createElement(
+            'div',
+            { key: 'conc-curve', style: styles.note, 'data-multipool-curve': 'conc-none' },
+            plotNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+          )
+        : React.createElement(
+            'svg',
+            {
+              key: 'conc-curve',
+              viewBox: '0 0 ' + String(PLOT_WIDTH) + ' ' + String(PLOT_HEIGHT),
+              width: '100%',
+              height: String(PLOT_HEIGHT),
+              style: { display: 'block', overflow: 'visible' },
+              'data-multipool-curve': 'concurrency',
+            },
+            concRuns.map(function (points, index) {
+              return React.createElement('polyline', {
+                key: 'conc-run-' + String(index),
+                points: points,
+                fill: 'none',
+                stroke: stroke,
+                strokeWidth: 1.5,
+                strokeLinejoin: 'round',
+                strokeLinecap: 'round',
+              })
+            }),
+          )
+      const heatRuns = folded === null ? [] : plotHeatRunsOf(folded.heat)
+      const heatChart = heatRuns.length === 0
+        ? React.createElement(
+            'div',
+            { key: 'heat-curve', style: styles.note, 'data-multipool-curve': 'heat-none' },
+            plotNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+          )
+        : React.createElement(
+            'svg',
+            {
+              key: 'heat-curve',
+              viewBox: '0 0 ' + String(PLOT_WIDTH) + ' ' + String(PLOT_HEIGHT),
+              width: '100%',
+              height: String(PLOT_HEIGHT),
+              style: { display: 'block', overflow: 'visible' },
+              'data-multipool-curve': 'heat',
+            },
+            heatRuns.map(function (points, index) {
+              return React.createElement('polyline', {
+                key: 'heat-run-' + String(index),
+                points: points,
+                fill: 'none',
+                stroke: stroke,
+                strokeWidth: 1.5,
+                strokeLinejoin: 'round',
+                strokeLinecap: 'round',
+              })
+            }),
+          )
 
       // The rows, newest first, exactly as rowsOf() ordered them -- the drawer does not sort, because
       // a sort here would be a second opinion about what "unknown" means and the two opinions would
@@ -1414,6 +1582,8 @@ window.__ModuleLoader__.load({
         React.createElement('div', { key: 'rows' }, rows),
         curve,
         rpmCurve,
+        concCurve,
+        heatChart,
         React.createElement('div', { key: 'table-note', style: styles.note, 'data-multipool-table-note': 'true' },
           TABLE_NOTE),
         table,
