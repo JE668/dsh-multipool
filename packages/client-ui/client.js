@@ -532,6 +532,60 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /**
+     * The same hour's per-minute request count -- that is what "RPM" means here: the number of
+     * upstream requests this plugin saw land in each drawn minute. A minute with no measurement
+     * breaks the run just like the 429 share above: a gap is honest, a line across it is a floor
+     * this page never measured (docs/07 U-08).
+     */
+    function plotRpmRunsOf(trend) {
+      var plotWidth = PLOT_WIDTH - PLOT_PAD_X * 2
+      var plotHeight = PLOT_HEIGHT - PLOT_PAD_Y * 2
+      var span = Math.max(1, trend.length - 1)
+      var maxRequests = 0
+      for (var index = 0; index < trend.length; index += 1) {
+        var point = trend[index]
+        if (
+          point !== undefined &&
+          point !== null &&
+          point.rate !== null &&
+          point.rate !== undefined &&
+          typeof point.requests === 'number' &&
+          isFinite(point.requests) &&
+          point.requests > maxRequests
+        ) {
+          maxRequests = point.requests
+        }
+      }
+      var scale = maxRequests === 0 ? 0 : plotHeight / maxRequests
+      var runs = []
+      var current = []
+      for (var index = 0; index < trend.length; index += 1) {
+        var point = trend[index]
+        var rate = point === undefined ? null : point.rate
+        if (rate === null || rate === undefined) {
+          if (current.length > 0) runs.push(current)
+          current = []
+          continue
+        }
+        var requests =
+          point.requests === undefined || point.requests === null || !isFinite(point.requests)
+            ? 0
+            : point.requests
+        current.push(
+          plotUnits(PLOT_PAD_X + (index / span) * plotWidth) +
+            ',' +
+            plotUnits(
+              PLOT_PAD_Y + (scale === 0 ? plotHeight : plotHeight - requests * scale),
+            ),
+        )
+      }
+      if (current.length > 0) runs.push(current)
+      return runs.map(function (run) {
+        return run.join(' ')
+      })
+    }
+
     function plotNoteOf(answered, measured) {
       if (!answered) return '\u5c1a\u672a\u542c\u5230\u5bbf\u4e3b'
       if (measured === 0) return '\u8fd8\u6ca1\u6709\u4efb\u4f55\u8bb0\u5f55'
@@ -1264,6 +1318,7 @@ window.__ModuleLoader__.load({
       // An hour with minutes but no rate in it is not a figure -- it is the same blank box as no hour
       // at all, and it gets the same sentence, because the drawer has measured nothing either way.
       const runs = folded === null ? [] : plotRunsOf(folded.trend)
+      const rpmRuns = folded === null ? [] : plotRpmRunsOf(folded.trend)
       const stroke = levelColor(view.level)
       const curve = runs.length === 0
         ? React.createElement(
@@ -1284,6 +1339,34 @@ window.__ModuleLoader__.load({
             runs.map(function (points, index) {
               return React.createElement('polyline', {
                 key: 'run-' + String(index),
+                points: points,
+                fill: 'none',
+                stroke: stroke,
+                strokeWidth: 1.5,
+                strokeLinejoin: 'round',
+                strokeLinecap: 'round',
+              })
+            }),
+          )
+      const rpmCurve = rpmRuns.length === 0
+        ? React.createElement(
+            'div',
+            { key: 'rpm-curve', style: styles.note, 'data-multipool-curve': 'rpm-none' },
+            plotNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+          )
+        : React.createElement(
+            'svg',
+            {
+              key: 'rpm-curve',
+              viewBox: '0 0 ' + String(PLOT_WIDTH) + ' ' + String(PLOT_HEIGHT),
+              width: '100%',
+              height: String(PLOT_HEIGHT),
+              style: { display: 'block', overflow: 'visible' },
+              'data-multipool-curve': 'rpm',
+            },
+            rpmRuns.map(function (points, index) {
+              return React.createElement('polyline', {
+                key: 'rpm-run-' + String(index),
                 points: points,
                 fill: 'none',
                 stroke: stroke,
@@ -1330,6 +1413,7 @@ window.__ModuleLoader__.load({
           'AMD \u8d26\u53f7\u6c60'),
         React.createElement('div', { key: 'rows' }, rows),
         curve,
+        rpmCurve,
         React.createElement('div', { key: 'table-note', style: styles.note, 'data-multipool-table-note': 'true' },
           TABLE_NOTE),
         table,
