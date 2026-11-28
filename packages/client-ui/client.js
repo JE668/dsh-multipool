@@ -1848,31 +1848,27 @@ window.__ModuleLoader__.load({
         // client-ui-settings-general, inside a whenAccess for the host's settings/describe, so an
         // install that composed no settings shell has no such slot and this inject is a no-op.
         ctx.slots.inject('settings.section', () =>
-          ctx.effect(() =>
-            ctx.slots.register(
-              {
-                name: 'settings.section',
-                id: 'dsh-multipool',
-                order: 40,
-                label: PANEL_LABEL,
-              },
-              MultiPoolSettings,
-            ),
+          ctx.slots.register(
+            {
+              name: 'settings.section',
+              id: 'dsh-multipool',
+              order: 40,
+              label: PANEL_LABEL,
+            },
+            MultiPoolSettings,
           ),
         )
         // T-8-e: Google settings group, fifth slot (order 50). Nothing to save, nothing to read --
         // just prefix hint and PT timezone display.
         ctx.slots.inject('settings.section', () =>
-          ctx.effect(() =>
-            ctx.slots.register(
-              {
-                name: 'settings.section',
-                id: 'dsh-multipool-google',
-                order: 50,
-                label: SETTINGS.googleLabel,
-              },
-              GoogleSettings,
-            ),
+          ctx.slots.register(
+            {
+              name: 'settings.section',
+              id: 'dsh-multipool-google',
+              order: 50,
+              label: SETTINGS.googleLabel,
+            },
+            GoogleSettings,
           ),
         )
       },
