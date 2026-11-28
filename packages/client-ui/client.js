@@ -226,20 +226,20 @@ window.__ModuleLoader__.load({
       note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u6267\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
       // Step 2 gate toggle: the settings section flips this, and the intercept layer reads it
       // on every AMD request. Absent means off -- read-only, nothing refused, nothing delayed.
-      rejectLabel: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42',
-      rejectOff: '\u8df3\u8fc7\u4e0d\u8d85\u989d\u7684\u8bf7\u6c42\uff08\u53ea\u8bb0\u8f93\u7387\u901a\u3002\uff09',
-      rejectOn: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42\uff08\u8d85\u989d\u65f6\u76f4\u63a5\u56de 429\u3002\uff09',
+      rejectLabel: '\u8d85\u51fa\u9884\u7b97\u65f6\u62d2\u6536\u8bf7\u6c42',
+      rejectOff: '\u8d85\u51fa\u9884\u7b97\u65f6\u653e\u884c\uff08\u53ea\u8bb0\u5f55\u89c2\u5bdf\u3002\uff09',
+      rejectOn: '\u8d85\u51fa\u9884\u7b97\u65f6\u62d2\u6536\u8bf7\u6c42\uff08\u8d85\u989d\u65f6\u76f4\u63a5\u56de 429\u3002\uff09',
       // Immersion toggle: opens the panel as a shell overlay instead of only inside the drawer.
       // Default off: nothing mounts anywhere the reader has not asked for.
-      dashboardLabel: '\u6c60\u6f0f\u770b\u677f',
-      dashboardOff: '\u6c60\u6f0f\u770b\u677f\uff08\u9ed8\u8ba4\u4e0d\u63a2\u8f6c\uff0c\u53ea\u5728\u628f\u5f15\u7bb1\u91cc\u770b\uff09',
-      dashboardOn: '\u6c60\u6f0f\u770b\u677f\uff08\u5df2\u63a2\u8f6c\u70b9\uff09',
+      dashboardLabel: '\u6c89\u6d78\u770b\u677f',
+      dashboardOff: '\u6c89\u6d78\u770b\u677f\uff08\u9ed8\u8ba4\u4e0d\u5f00\u542f\uff0c\u53ea\u5728\u8bbe\u7f6e\u91cc\u770b\uff09',
+      dashboardOn: '\u6c89\u6d78\u770b\u677f\uff08\u5df2\u5f00\u542f\uff09',
       // T-8-e: Google settings group. No account-RPM input (Google has no usage endpoint),
       // just prefix hint + PT timezone display + collapsed default.
       googleLabel: '\u767E\u5229 (Google)',
-      googleIntro: '\u4f7f\u7528 OpenAI \u529f\u80fd\u754c\u9762\u6240\u6709\u7684\u6a21\u578b\u90fd\u662f Google \u5361\u724c\u3002\u5b8c\u6574\u529f\u80fd\u89c4\u5219\u9700\u8981\u8bb0\u8f93 /v1/usage \u65e5\u5206\u91cf\uff0c\u4f46 Google \u672a\u5f97\u624d\u8fbe\u53ea\u662f\u6240\u6709\u6a21\u578b\u53d6\u503c\u3002',
-      googlePrefixHint: 'API Key \u987a\u7f00\u4e3a AIza\u3002',
-      googleTimezone: '\u65e5\u5206 \u8fde\u6566 \u65f6\u5c40: Pacific Time (America/Los_Angeles)\uff0c\u6bcf\u591d 00:00 PT\u91cd\u7b2c\u3002',
+      googleIntro: '\u4f7f\u7528 OpenAI \u517c\u5bb9\u7aef\u70b9\uff0c\u6240\u6709\u6a21\u578b\u90fd\u662f Google \u724c\u7167\u3002\u5b8c\u6574\u914d\u989d\u89c4\u5219\u9700\u8981\u9010\u6a21\u578b\u8bb0 /v1/usage \u65e5\u5206\u91cf\uff0c\u4f46 Google \u672a\u63d0\u4f9b\uff0c\u8fd9\u91cc\u53ea\u662f\u6240\u6709\u6a21\u578b\u7684\u53d6\u503c\u3002',
+      googlePrefixHint: 'API Key \u524d\u7f00\u4e3a AIza\u3002',
+      googleTimezone: '\u65e5\u914d\u989d\u91cd\u7f6e\u65f6\u533a: Pacific Time (America/Los_Angeles)\uff0c\u6bcf\u5929 00:00 PT \u91cd\u7f6e\u3002',
     }
 
     /**
