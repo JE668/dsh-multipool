@@ -203,13 +203,15 @@ window.__ModuleLoader__.load({
       stored: '\u5df2\u5b58\u5728\u672c\u673a',
       inLayer: '\uff08',
       notStored: '\u672c\u673a\u8fd8\u6ca1\u6709\u5b58',
-      // The right bracket closes here, not at the one caller: inLayer opens "(" and these four
-      // close it, so a second place cannot print "stored (config file" for ever. If the seam cannot
-      // name a layer, layerWord answers nothing and no bracket was opened.
-      inFile: '\u914d\u7f6e\u6587\u4ef6\uff09',
-      inEnv: '\u73af\u5883\u53d8\u91cf\uff09',
-      inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf\uff09',
-      inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf\uff09',
+      // layerWord answers a bare noun and SETTINGS.close closes whereOf()'s bracket, so the two
+      // cannot get out of step: a word that brought its own bracket would print "stored (config
+      // file)" next to a sentence that never opened one. If the seam cannot name a layer, layerWord
+      // answers nothing and no bracket was opened -- whereOf() checks that, not this table.
+      inFile: '\u914d\u7f6e\u6587\u4ef6',
+      inEnv: '\u73af\u5883\u53d8\u91cf',
+      inProjectEnv: '\u9879\u76ee\u73af\u5883\u53d8\u91cf',
+      inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf',
+      close: '\uff09',
       note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u6267\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
     }
 
@@ -272,7 +274,7 @@ window.__ModuleLoader__.load({
       // The layer is not appended here. The where line already carries where the key lives, and a
       // second telling after the number reads as a fact about the number -- "0.59 pts, in the config
       // file" -- which is the one thing a reading of the number must not imply.
-      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' / ' + ptsOf(limit.value) + ' pts'
+      return carrier + SETTINGS.reading + ' ' + ptsOf(used.value) + ' of ' + ptsOf(limit.value) + ' pts'
     }
 
     /**
@@ -659,7 +661,7 @@ window.__ModuleLoader__.load({
       // Nothing opened, nothing to close: an unknown layer name leaves the line as the bare sentence
       // rather than as a bracket holding this page's ignorance.
       if (named === '') return SETTINGS.stored
-      return SETTINGS.stored + SETTINGS.inLayer + named
+      return SETTINGS.stored + SETTINGS.inLayer + named + SETTINGS.close
     }
 
     function useKeySection() {

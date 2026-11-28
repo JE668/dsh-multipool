@@ -288,7 +288,7 @@ test('a reading is printed in two decimals, under a sentence that does not deny 
       fetchedAt: '2026-11-27T04:06:00Z',
     },
   })
-  assert.match(answered, /0\.2 \/ 1 pts/)
+  assert.match(answered, /0\.2 of 1 pts/)
   assert.doesNotMatch(answered, /0\.19718791934428737/)
   assert.doesNotMatch(answered, /\u2014/)
 })
@@ -307,7 +307,7 @@ test('a whole number does not grow decimals it did not need', () => {
       fetchedAt: '2026-11-27T04:06:00Z',
     },
   })
-  assert.match(answered, /5 \/ 20 pts/)
+  assert.match(answered, /5 of 20 pts/)
 })
 
 test('a reading leads with its own sentence, not with the one for a missing number', () => {
@@ -319,9 +319,9 @@ test('a reading leads with its own sentence, not with the one for a missing numb
     tooSoon: false,
     usage: { available: true, dailyLimitPts: { value: 1, source: 'api' }, dailyUsedPts: { value: 0.2, source: 'api' } },
   })
-  // The left half of "0.2 / 1 pts" used to be the refusal sentence, so the line denied the number it
+  // The left half of "0.2 of 1 pts" used to be the refusal sentence, so the line denied the number it
   // printed. Nothing above checked the opening words; this does.
-  assert.match(answered, /\u4e0a\u6e38\u56de\u7b54\uff1a 0\.2 \/ 1 pts/)
+  assert.match(answered, /\u4e0a\u6e38\u56de\u7b54\uff1a 0\.2 of 1 pts/)
   assert.doesNotMatch(answered, /\u6ca1\u5e26\u56de\u7528\u91cf\u6570\u5b57/)
 })
 
@@ -332,7 +332,7 @@ test('the reading line carries no word about where the key is kept', () => {
   // enough to say where the key is, so it says it right after the number. Two facts, one line,
   // and the result reads as a fact about the number.
   const named = plugin.sentenceOf({ providerId: 'amd', said: '', atMs: 1, tooSoon: false, layer: 'file', usage: reading })
-  assert.equal(named, '\u4e0a\u6e38\u56de\u7b54\uff1a 0.59 / 1 pts')
+  assert.equal(named, '\u4e0a\u6e38\u56de\u7b54\uff1a 0.59 of 1 pts')
   assert.doesNotMatch(named, /\u914d\u7f6e\u6587\u4ef6/)
 })
 
