@@ -145,9 +145,22 @@
   （`assume`，等用户确认后才落 02）。
 - 红字拒绝（`validateAmdKey` 写盘前就拒，docs/02 §1.9）：`sk-开头的非 Token Factory 键`、Jupyter 实例域名。
 - 并发 / RPM 文案必须带 §号引用 docs/02 §1.1、§1.4；本地估算带 `L` 徽标、不与上游上限相减（docs/04 §9.2）。
-- 同一提交里把 `acceptsWrites` 置 `true`：写入口存在了，它才不是一条空承诺。
-- `HostOptions.acceptsWrites` 默认 `false`，且现在**故意**保持 `false`：设置页的保存按钮还不存在，
-  提前开等于对外承诺一条必然返回 `no credential service` 的写入路径。
+- `HostOptions.acceptsWrites` 默认 `false`，保存按钮落地时在**同一提交**里置 `true`。
+  - 2026-11-27 设置页落地（`6f1c19c`）时开关仍为 `false`，理由记的是「保存按钮还不存在」。
+  - 2026-11-28 真机两屏已过（`已用 0.26 / 1 pts`；第二按
+    `（沿用不到一分钟前的那次读取）已用 0.26 / 1 pts`），保存按钮确实在、确实可写。
+    **但开关至今仍是 `false`**，而页面照样能存、能忘。
+  - 实测（读源码 + `test/host-wiring.test.ts`）：开关确实是对的开关，只是它可选地拨的
+    不只是凭据注入——`channel.offer` 只在 `true` 时才把 `writesFor(seam)` 递给 channel；
+    但页面的写命令走的是路由上的 `command` 端点，`serveOn` 注册时手柄已带 `writes`，
+    与 `apply` 里那次 offer **无关**。把开关翻成 `false` 的 `stays closed to writes…`
+    用例仍绿，因为那条用例是**手工**把 `writes` 塞进去才问的，不是走 `apply`。
+  - ⇒ 「同一提交里置 true」这句在本实现里只是一句关于另一条路径的承诺：
+    真正的写入路径完全不需要它，翻它既不开也不关任何东西。
+  - 待办：要么让 `command` 端点依赖 offer（一条路径，开关才有意义），
+    要么删掉 `HostOptions.acceptsWrites` 与这句任务描述，
+    承认 `serveOn` 交付 `writes` 才是唯一入口。留着两条谁能写、谁不能写都能自圆其说的说法，
+    是这个文件最不该有的那种状态。
 - **验收**：C-01 ~ C-03、U-04
 
 ---
