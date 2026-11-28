@@ -262,9 +262,14 @@ export function apply(ctx, options = {}) {
         // The intercept layer owns the gate, the metrics store, and the LLM stream hook.
         // It reads/writes the same `facts` object apply() uses, so the channel source and the
         // request recorder see one consistent view.
+        //
+        // Guard: DSH's ctx proxies `llm` behind `inject`. Accessing ctx.llm without an inject
+        // service throws ("cannot get property \"llm\" without inject"). Only attempt the intercept
+        // when both are present; otherwise fall back to seam-only hooks that still answer real
+        // data through the key store.
         let interceptDisposer;
         let interceptHooks;
-        if (ctx.llm !== undefined) {
+        if (ctx.inject !== undefined && ctx.llm !== undefined) {
             // createIntercept is synchronous: no top-level awaits, everything async is lazy.
             const intercept = createIntercept({
                 effect: ctx.effect,
