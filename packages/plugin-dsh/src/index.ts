@@ -390,24 +390,32 @@ export function apply(
     // It reads/writes the same `facts` object apply() uses, so the channel source and the
     // request recorder see one consistent view.
     //
-    // Guard: DSH's ctx proxies `llm` behind `inject`. Accessing ctx.llm without an inject
-    // service throws ("cannot get property \"llm\" without inject"). Only attempt the intercept
-    // when both are present; otherwise fall back to seam-only hooks that still answer real
-    // data through the key store.
+    // Guard: DSH's ctx proxies `llm` behind `inject`. Accessing ctx.llm without
+    // the llm service throws "cannot get property \"llm\" without inject" inside
+    // the Proxy get trap, so `&&` short-circuit cannot save us. Use try/catch:
+    // a context without llm simply falls back to seam-only hooks that still
+    // answer real data through the key store.
     let interceptDisposer: (() => void) | undefined
     let interceptHooks: SourceHooks | undefined
-    if (ctx.inject !== undefined && ctx.llm !== undefined) {
-      // createIntercept is synchronous: no top-level awaits, everything async is lazy.
-      const intercept = createIntercept(
-        {
-          effect: ctx.effect,
-          inject: ctx.inject,
-          llm: ctx.llm,
-        },
-        { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted },
-      )
-      interceptDisposer = intercept.disposer
-      interceptHooks = intercept.hooks
+    if (ctx.inject !== undefined) {
+      try {
+        const llm = ctx.llm
+        if (llm !== undefined) {
+          // createIntercept is synchronous: no top-level awaits, everything async is lazy.
+          const intercept = createIntercept(
+            {
+              effect: ctx.effect,
+              inject: ctx.inject,
+              llm,
+            },
+            { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted },
+          )
+          interceptDisposer = intercept.disposer
+          interceptHooks = intercept.hooks
+        }
+      } catch {
+        // llm service not available in this context; seam-only hooks below still work.
+      }
     }
 
     // Both hooks read the current `seam` and `lastAttemptMs` when they are called, so they see a
