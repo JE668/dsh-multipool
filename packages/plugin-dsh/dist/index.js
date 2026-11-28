@@ -33,7 +33,7 @@ import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClo
 import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
-import { readAmdUsage, withProviderUsage } from './usage.js';
+import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js';
 import { createIntercept } from './intercept-index.js';
 export const VERSION = '0.0.2-rc.4';
 /**
@@ -311,6 +311,13 @@ export function apply(ctx, options = {}) {
                     rows: rowsOf(events, READING_ROWS),
                 };
             },
+            diagnose: (providerId) => diagnoseAmd({
+                providerId,
+                seam,
+                reference: AMD_KEY_REF_NAME,
+                nowMs: nowMs(),
+                lastAttemptMs,
+            }),
         };
         const source = channelSourceFrom(facts, nowMs, hooks);
         const budget = RAIL_BUDGET;

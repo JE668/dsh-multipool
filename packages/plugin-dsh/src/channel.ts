@@ -57,6 +57,7 @@ import {
 } from '@dsh-multipool/core'
 import { iconViewOf, type IconView } from '@dsh-multipool/plugin-client'
 import type { UsageAttempt } from './usage.js'
+import type { DiagnoseResult } from './source.js'
 
 /**
  * The path prefix the page asks under, and the two endpoints below it.
@@ -115,6 +116,7 @@ export const ENDPOINT_READING = 'reading'
  * that a host must produce both or neither -- which it can, since both come from the same window.
  */
 export const ENDPOINT_DASHBOARD = 'dashboard'
+export const ENDPOINT_DIAGNOSE = 'diagnose'
 /**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
@@ -210,6 +212,11 @@ export interface ChannelSource {
    * state rather than a flat line at zero -- the two are different claims (docs/07 U-08).
    */
   readonly readDashboard?: () => DashboardReading
+  /**
+   * One account-summary probe: POST one minimal chat request to the upstream and report the
+   * rate-limit headers it answered with (T-1-i). Read-only, never writes the store.
+   */
+  readonly diagnose?: (providerId: ProviderId) => Promise<DiagnoseResult>
 }
 
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
@@ -508,6 +515,14 @@ export function answerOf(
       // Both halves come out of one call, so they are one moment. The page may draw them slowly,
       // but it cannot be handed a curve from before the table it is comparing it with.
       return { ok: true as const, value: source.readDashboard() }
+    }
+    if (endpoint === ENDPOINT_DIAGNOSE && source !== undefined && source.diagnose !== undefined) {
+      const asked =
+        payload !== null && typeof payload === 'object'
+          ? (payload as Record<string, unknown>)[TEST_PROVIDER]
+          : undefined
+      const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd'
+      return { ok: true as const, value: await source.diagnose(providerId as ProviderId) }
     }
     if (endpoint === ENDPOINT_READING && source !== undefined && source.readUsage !== undefined) {
       const asked =

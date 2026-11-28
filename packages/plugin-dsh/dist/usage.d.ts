@@ -23,8 +23,35 @@
  */
 import { type ProviderId, type UsageResult } from '@dsh-multipool/core';
 import type { CredentialSeam } from './key-store.js';
+import type { DiagnoseResult } from './source.js';
 /** Where the upstream usage reading answers, and how it is spelled when it does not. */
 export declare const USAGE_PATH = "/usage?include_recent=true";
+/** One probe request: POST the smallest possible chat body to read the account's own rate headers. */
+export declare const DIAGNOSE_PATH = "/v1/chat/completions";
+/** One frame of a probe answer: status, headers, body -- nothing else touches the key. */
+export interface ProbeFrame {
+    readonly status: number;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly body: string;
+}
+/** One press of the settings-page "account summary diagnosis" button (T-1-i).
+ *
+ * Read-only: one POST to the upstream chat endpoint with max_tokens: 1, then report the
+ * rate-limit headers it answered with. Writes nothing -- not the key, not any budget field,
+ * not the metrics store. The request is real traffic, so it counts against the account's
+ * 20 RPM window like any other chat request; this plugin grants it no exemption.
+ */
+export declare function diagnoseAmd(args: {
+    readonly providerId: ProviderId;
+    readonly seam: CredentialSeam | undefined;
+    readonly reference: string;
+    readonly baseUrl?: string;
+    readonly nowMs: number;
+    readonly lastAttemptMs?: number;
+    readonly timeoutMs?: number;
+    /** The layer the seam resolved the key in, if it named one. Travels out on the attempt. */
+    readonly layer?: string;
+}): Promise<DiagnoseResult>;
 /** One frame of a reading: the JSON text, or the status line when the text is not the answer. */
 export interface UsageFrame {
     readonly status: number;

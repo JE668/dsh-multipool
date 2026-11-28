@@ -31,9 +31,147 @@ import {
   type UsageResult,
 } from '@dsh-multipool/core'
 import type { CredentialSeam } from './key-store.js'
+import type { DiagnoseResult } from './source.js'
 
 /** Where the upstream usage reading answers, and how it is spelled when it does not. */
 export const USAGE_PATH = '/usage?include_recent=true'
+
+/** One probe request: POST the smallest possible chat body to read the account's own rate headers. */
+export const DIAGNOSE_PATH = '/v1/chat/completions'
+
+/** One frame of a probe answer: status, headers, body -- nothing else touches the key. */
+export interface ProbeFrame {
+  readonly status: number
+  readonly headers: Readonly<Record<string, string>>
+  readonly body: string
+}
+
+/** Send one POST to `url` with `Authorization: Bearer <key>` and a JSON body, returning only the frame.
+ *
+ * The key never leaves this function: not returned, not logged, not put into a thrown error.
+ * `fetch` is looked up per call so a test can replace `globalThis.fetch`.
+ */
+async function sendProbe(
+  url: string,
+  key: string,
+  body: unknown,
+  timeoutMs: number,
+): Promise<ProbeFrame> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + key, 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(body === undefined ? null : body),
+      signal: controller.signal,
+    })
+    const headers: Record<string, string> = {}
+    response.headers.forEach((value, name) => {
+      headers[name.toLowerCase()] = value
+    })
+    const bodyText = await response.text()
+    return { status: response.status, headers, body: bodyText }
+  } catch (error) {
+    const reason = controller.signal.aborted ? 'timed out after ' + String(timeoutMs) + 'ms' : 'no answer'
+    throw new Error(reason + ' from ' + scrubSecrets(url.replace(/\?.*$/, '')))
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** One press of the settings-page "account summary diagnosis" button (T-1-i).
+ *
+ * Read-only: one POST to the upstream chat endpoint with max_tokens: 1, then report the
+ * rate-limit headers it answered with. Writes nothing -- not the key, not any budget field,
+ * not the metrics store. The request is real traffic, so it counts against the account's
+ * 20 RPM window like any other chat request; this plugin grants it no exemption.
+ */
+export async function diagnoseAmd(args: {
+  readonly providerId: ProviderId
+  readonly seam: CredentialSeam | undefined
+  readonly reference: string
+  readonly baseUrl?: string
+  readonly nowMs: number
+  readonly lastAttemptMs?: number
+  readonly timeoutMs?: number
+  /** The layer the seam resolved the key in, if it named one. Travels out on the attempt. */
+  readonly layer?: string
+}): Promise<DiagnoseResult> {
+  const now = args.nowMs
+  const floor = args.timeoutMs === undefined ? 60_000 : args.timeoutMs
+  if (args.lastAttemptMs !== undefined && now - args.lastAttemptMs < floor) {
+    return {
+      providerId: args.providerId,
+      upstreamLimit: null,
+      upstreamRemaining: null,
+      status: null,
+      said: 'the previous probe is less than a minute old, and the upstream allows one a minute',
+      atMs: now,
+      tooSoon: true,
+    }
+  }
+
+  const base = args.baseUrl ?? PROVIDER_BASE_URLS.amd ?? ''
+  const seam = args.seam
+  if (seam === undefined) {
+    return {
+      providerId: args.providerId,
+      upstreamLimit: null,
+      upstreamRemaining: null,
+      status: null,
+      said: 'no ' + args.reference + ' is stored, so there was nothing to send',
+      atMs: now,
+      tooSoon: false,
+    }
+  }
+  const stored = await seam.resolve(args.reference)
+  if (stored === undefined) {
+    return {
+      providerId: args.providerId,
+      upstreamLimit: null,
+      upstreamRemaining: null,
+      status: null,
+      said: 'no ' + args.reference + ' is stored, so there was nothing to send',
+      atMs: now,
+      tooSoon: false,
+    }
+  }
+
+  const url = base.replace(/\/$/, '') + DIAGNOSE_PATH
+  let frame: ProbeFrame
+  try {
+    frame = await sendProbe(url, stored.value, { max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }, args.timeoutMs ?? 15_000)
+  } catch (error) {
+    return {
+      providerId: args.providerId,
+      upstreamLimit: null,
+      upstreamRemaining: null,
+      status: null,
+      said: 'upstream unreachable: ' + scrubSecrets(error instanceof Error ? error.message : String(error)),
+      atMs: now,
+      tooSoon: false,
+    }
+  }
+
+  const limitRaw = frame.headers['x-ratelimit-limit-user-rpm']
+  const remainingRaw = frame.headers['x-ratelimit-remaining-user-rpm']
+  const limit = limitRaw === undefined ? null : Number(limitRaw)
+  const remaining = remainingRaw === undefined ? null : Number(remainingRaw)
+  const said = frame.status < 200 || frame.status >= 300
+    ? 'HTTP ' + String(frame.status) + (frame.body === '' ? '' : ': ' + firstLineOf(frame.body, 160))
+    : 'the upstream answered ' + String(frame.status) + ' and reported its own rate headers'
+  return {
+    providerId: args.providerId,
+    upstreamLimit: limit,
+    upstreamRemaining: remaining,
+    status: frame.status,
+    said: scrubSecrets(said),
+    atMs: now,
+    tooSoon: false,
+    ...(args.layer === undefined ? {} : { layer: args.layer }),
+  }
+}
 
 /** One frame of a reading: the JSON text, or the status line when the text is not the answer. */
 export interface UsageFrame {

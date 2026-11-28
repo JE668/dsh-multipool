@@ -14,7 +14,8 @@
  *   does those; this layer only reads the shared `facts` object and hooks into llm.stream.
  */
 import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, AccountGate, computeBudget, createSystemClock, createMetricsStore, READING_MINUTES, READING_ROWS, rowsOf, trendOf, } from './vendor/core/index.js';
-import { readAmdUsage, withProviderUsage } from './usage.js';
+import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js';
+import { AMD_KEY_REF_NAME } from './channel.js';
 export function createIntercept(ctx, options = {}) {
     const nowMs = options.nowMs ?? (() => createSystemClock().now());
     // 1) Admission gate - same policy the rail prints
@@ -44,6 +45,13 @@ export function createIntercept(ctx, options = {}) {
                 rows: rowsOf(events, READING_ROWS),
             };
         },
+        diagnose: (providerId) => diagnoseAmd({
+            providerId,
+            seam,
+            reference: AMD_KEY_REF_NAME,
+            nowMs: nowMs(),
+            lastAttemptMs,
+        }),
     };
     // 7) Key-status watcher is owned by apply(); this layer only tears down the seam watcher
     const drops = [keyDisposer];

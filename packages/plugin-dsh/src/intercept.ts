@@ -32,7 +32,8 @@ import {
 } from '@dsh-multipool/core'
 import type { SourceHooks } from './source.js'
 import type { UsageAttempt } from './usage.js'
-import { readAmdUsage, withProviderUsage } from './usage.js'
+import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js'
+import { AMD_KEY_REF_NAME } from './channel.js'
 import type { UsageResult } from '@dsh-multipool/core'
 import type { CredentialSeam, KeyState } from './key-store.js'
 
@@ -115,6 +116,14 @@ export function createIntercept(
         rows: rowsOf(events, READING_ROWS),
       }
     },
+    diagnose: (providerId: ProviderId) =>
+      diagnoseAmd({
+        providerId,
+        seam,
+        reference: AMD_KEY_REF_NAME,
+        nowMs: nowMs(),
+        lastAttemptMs,
+      }),
   }
 
   // 7) Key-status watcher is owned by apply(); this layer only tears down the seam watcher

@@ -42,6 +42,7 @@
 import { type Account, type DashboardReading, type MetricsEvent, type ProviderId, type Snapshot, type UsageResult } from '@dsh-multipool/core';
 import { type IconView } from '@dsh-multipool/plugin-client';
 import type { UsageAttempt } from './usage.js';
+import type { DiagnoseResult } from './source.js';
 /**
  * The path prefix the page asks under, and the two endpoints below it.
  *
@@ -96,6 +97,7 @@ export declare const ENDPOINT_READING = "reading";
  * that a host must produce both or neither -- which it can, since both come from the same window.
  */
 export declare const ENDPOINT_DASHBOARD = "dashboard";
+export declare const ENDPOINT_DIAGNOSE = "diagnose";
 /**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
@@ -189,6 +191,11 @@ export interface ChannelSource {
      * state rather than a flat line at zero -- the two are different claims (docs/07 U-08).
      */
     readonly readDashboard?: () => DashboardReading;
+    /**
+     * One account-summary probe: POST one minimal chat request to the upstream and report the
+     * rate-limit headers it answered with (T-1-i). Read-only, never writes the store.
+     */
+    readonly diagnose?: (providerId: ProviderId) => Promise<DiagnoseResult>;
 }
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
 export interface IconBudget {

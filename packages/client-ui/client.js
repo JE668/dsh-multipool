@@ -48,6 +48,7 @@ window.__ModuleLoader__.load({
     // come back from one call, because a curve drawn at 10:31:02 beside a table filled at 10:31:05
     // would be a comparison of two moments presented as one tick (T-3-b).
     var ENDPOINT_DASHBOARD = 'dashboard'
+    var ENDPOINT_DIAGNOSE = 'diagnose'
     var NO_VALUE = '\u2014'
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
@@ -192,6 +193,9 @@ window.__ModuleLoader__.load({
       forgetting: '\u6b63\u5728\u5fd8\u8bb0',
       test: '\u6d4b\u8bd5\u8fde\u63a5',
       testing: '\u6b63\u5728\u8bf7\u6c42\u4e0a\u6e38',
+      diagnose: '账号汇总诊断',
+      diagnoseTesting: '正在诊断…',
+      diagnoseTooSoon: '上一次诊断不到一分钟，这次不发（上游每账号一分钟只算一次）',
       // Two sentences for the two ways a test can end without a number. Neither is an error,
       // and neither is a zero: one says the button refused itself, the other says the upstream
       // answered with nothing this page may read.
@@ -717,6 +721,7 @@ window.__ModuleLoader__.load({
       const state = key.state
       const busy = state.busy !== null
       const rejectOn = key.rejectOnBudgetExhausted === true
+      const diagnoseReady = state.diagnose.atMs === null || Date.now() - state.diagnose.atMs >= 60000
 
       // Ask once on arrival: the section owes the reader its own answer before the reader clicks
       // anything, and read() is the one projection this page needs (where the key lives), not the
@@ -772,6 +777,17 @@ window.__ModuleLoader__.load({
             { key: 'test', type: 'button', disabled: busy, onClick: key.test, style: settingsStyles.button },
             busy && state.busy === 'test' ? SETTINGS.testing : SETTINGS.test,
           ),
+          React.createElement(
+            'button',
+            {
+              key: 'diagnose',
+              type: 'button',
+              disabled: busy || state.diagnose.busy === 'diagnose' || !diagnoseReady,
+              onClick: key.diagnose,
+              style: settingsStyles.button,
+            },
+            busy && state.busy === 'diagnose' ? SETTINGS.diagnoseTesting : SETTINGS.diagnose,
+          ),
         ),
         React.createElement(
           'div',
@@ -802,6 +818,11 @@ window.__ModuleLoader__.load({
           'div',
           { key: 'said', style: settingsStyles.note, 'data-multipool-said': 'true' },
           state.said === null || state.said === undefined ? '' : String(state.said),
+        ),
+        React.createElement(
+          'div',
+          { key: 'diagnose', style: settingsStyles.note, 'data-multipool-diagnose': 'true' },
+          state.diagnose.said === null ? '' : String(state.diagnose.said) + '，上游限额 ' + (state.diagnose.limit === null ? '\u2014' : String(state.diagnose.limit)) + ' / 剩余 ' + (state.diagnose.remaining === null ? '\u2014' : String(state.diagnose.remaining)) + '；本地假设 Key \u00d7 30 = 30',
         ),
         React.createElement('div', { key: 'care', style: settingsStyles.note }, SETTINGS.note),
       )
@@ -838,7 +859,7 @@ window.__ModuleLoader__.load({
       // The page never learns the key. describe() answers whether one is configured, and the
       // layer it came from; that is the whole vocabulary this section has for "is it there".
       const statePair = React.useState(function () {
-        return { reading: 'unread', present: false, layer: undefined, busy: null, said: null }
+        return { reading: 'unread', present: false, layer: undefined, busy: null, said: null, diagnose: { busy: null, said: null, limit: null, remaining: null, atMs: null } }
       })
       const state = statePair[0]
       const setState = statePair[1]
@@ -917,6 +938,42 @@ window.__ModuleLoader__.load({
         })
       }
 
+      const diagnose = function () {
+        const now = Date.now()
+        var lastAt = null
+        if (state.diagnose !== null && state.diagnose !== undefined) lastAt = state.diagnose.atMs
+        if (lastAt !== null && now - lastAt < 60000) {
+          say(SETTINGS.diagnoseTooSoon, null)
+          return undefined
+        }
+        setState(function (was) {
+          return { reading: was.reading, present: was.present, layer: was.layer, busy: 'diagnose', said: was.said, diagnose: was.diagnose }
+        })
+        return ask(ENDPOINT_DIAGNOSE).then(function (outcome) {
+          var sentence = null
+          var limit = null
+          var remaining = null
+          if (outcome === undefined || outcome === null || outcome.ok !== true) {
+            sentence = outcome === null || outcome === undefined ? SETTINGS.unreachable : (outcome.message || outcome.reason || SETTINGS.unreachable)
+          } else {
+            sentence = outcome.said
+            limit = outcome.upstreamLimit
+            remaining = outcome.upstreamRemaining
+          }
+          setState(function (was) {
+            return {
+              reading: was.reading,
+              present: was.present,
+              layer: was.layer,
+              busy: null,
+              said: was.said,
+              diagnose: { busy: null, said: sentence, limit: limit, remaining: remaining, atMs: now },
+            }
+          })
+          return outcome
+        })
+      }
+
       const saveReject = function (value) {
         setRejectOnBudgetExhausted(value)
         return commandOf({ name: 'reject-on-budget-exhausted', value: value }).then(function (outcome) {
@@ -936,6 +993,7 @@ window.__ModuleLoader__.load({
         save: save,
         forget: forget,
         test: test,
+        diagnose: diagnose,
         read: read,
         rejectOnBudgetExhausted: rejectOnBudgetExhausted,
         setRejectOnBudgetExhausted: saveReject,

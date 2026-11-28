@@ -53,6 +53,7 @@ export function channelSourceFrom(facts, nowMs, hooks) {
         ...(hooks?.testUsage === undefined ? {} : { testUsage: hooks.testUsage }),
         ...(hooks?.readUsage === undefined ? {} : { readUsage: hooks.readUsage }),
         ...(hooks?.readDashboard === undefined ? {} : { readDashboard: hooks.readDashboard }),
+        ...(hooks?.diagnose === undefined ? {} : { diagnose: hooks.diagnose }),
         activeSessions: () => facts.activeSessions ?? 0,
         queued: () => facts.queued ?? 0,
         nowMs,

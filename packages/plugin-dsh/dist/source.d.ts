@@ -19,6 +19,27 @@
 import type { Account, DashboardReading, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
 import type { ChannelSource } from './channel.js';
 import type { UsageAttempt } from './usage.js';
+/** One press of the settings-page "account summary diagnosis" button (T-1-i).
+ *
+ * Read-only: it sends one minimal upstream request (max_tokens: 1) to read the account's own
+ * rate-limit headers, prints what came back, and writes nothing -- not the key, not any budget
+ * field, not the metrics store. The request is real traffic, so it counts against the account's
+ * 20 RPM window like any other chat request; this plugin grants it no exemption.
+ */
+export interface DiagnoseResult {
+    readonly providerId: ProviderId;
+    /** X-RateLimit-Limit-User-RPM from the upstream, or null when the header was absent. */
+    readonly upstreamLimit: number | null;
+    /** X-RateLimit-Remaining-User-RPM from the upstream, or null when the header was absent. */
+    readonly upstreamRemaining: number | null;
+    readonly status: number | null;
+    /** One sentence for the form -- never the key. */
+    readonly said: string;
+    /** Epoch ms this attempt finished, so a second press inside a minute can be refused locally. */
+    readonly atMs: number;
+    /** True when no request was made because the last one was too recent. */
+    readonly tooSoon: boolean;
+}
 /** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
 export interface SourceHooks {
     readonly readFromSeam?: () => Promise<boolean>;
@@ -41,6 +62,11 @@ export interface SourceHooks {
      * empty" without also implying the upstream agreed.
      */
     readonly readDashboard?: () => DashboardReading;
+    /**
+     * One account-summary diagnosis: send one minimal upstream request and report the
+     * rate-limit headers it answered with (T-1-i).
+     */
+    readonly diagnose?: (providerId: ProviderId) => Promise<DiagnoseResult>;
 }
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {
