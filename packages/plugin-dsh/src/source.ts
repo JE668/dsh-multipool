@@ -69,6 +69,11 @@ export interface SourceFacts {
    * one has read" instead of "the file", which it would merely be guessing.
    */
   readonly keyLayer: string | undefined
+  /**
+   * Step 2 gate toggle: the settings section flips this, and the intercept layer reads it
+   * on every AMD request. Absent means "off" (read-only).
+   */
+  readonly rejectOnBudgetExhausted?: boolean
 }
 
 /** A source that has nothing to report yet: every member is absent, none is zero. */

@@ -204,7 +204,7 @@ export declare const AMD_KEY_REF_NAME = "AMD_API_KEY";
  * somewhere": each names one seam method (set, unset) and the one reference it may touch. A page
  * that could ask for an arbitrary ref would be asking this plugin to hold somebody else's key.
  */
-export type ChannelCommandName = 'save' | 'forget';
+export type ChannelCommandName = 'save' | 'forget' | 'reject-on-budget-exhausted';
 /** Refused because the name is not one of the two; nothing was attempted. */
 export declare const COMMAND_UNKNOWN = "unknown command";
 /** Refused because a field does not have the type the command needs; nothing was attempted. */
@@ -241,6 +241,12 @@ export interface CommandOutcome {
 export interface ChannelWrites {
     readonly save: (key: string) => Promise<CommandOutcome>;
     readonly forget: () => Promise<CommandOutcome>;
+    /**
+     * Step 2 gate toggle: the page's settings section sets this, and the intercept layer
+     * reads it on every AMD request. Absent on installs without a credential service, which
+     * keeps the toggle invisible where there is nothing to gate.
+     */
+    readonly rejectOnBudgetExhausted?: (value: boolean) => Promise<CommandOutcome>;
 }
 export interface PublishedView {
     readonly snapshot: Snapshot;

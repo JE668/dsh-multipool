@@ -220,6 +220,11 @@ window.__ModuleLoader__.load({
       inUserEnv: '\u7528\u6237\u73af\u5883\u53d8\u91cf',
       close: '\uff09',
       note: '\u5e76\u53d1 8 \u4e0e RPM 20 \u6765\u81ea docs/02 section 1.1 \u4e0e section 1.4\uff0c\u4ee5\u4e0a\u6e38\u56de\u6267\u4e3a\u51c6\u3002\u4f59\u989d\u53ea\u80fd\u4ece GET /v1/usage \u8bfb\uff0c\u4e0d\u5728\u8fd9\u4e00\u9875\u7b97\u3002',
+      // Step 2 gate toggle: the settings section flips this, and the intercept layer reads it
+      // on every AMD request. Absent means off -- read-only, nothing refused, nothing delayed.
+      rejectLabel: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42',
+      rejectOff: '\u8df3\u8fc7\u4e0d\u8d85\u989d\u7684\u8bf7\u6c42\uff08\u53ea\u8bb0\u8f93\u7387\u901a\u3002\uff09',
+      rejectOn: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42\uff08\u8d85\u989d\u65f6\u76f4\u63a5\u56de 429\u3002\uff09',
     }
 
     /**
@@ -669,6 +674,32 @@ window.__ModuleLoader__.load({
         fontSize: 12,
         cursor: 'pointer',
       },
+      toggle: {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 12,
+        color: 'var(--dsw-alias-label-primary)',
+        cursor: 'pointer',
+        userSelect: 'none',
+      },
+      toggleBox: {
+        width: 20,
+        height: 12,
+        borderRadius: 6,
+        border: '1px solid var(--dsw-alias-border-secondary)',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 2,
+        boxSizing: 'border-box',
+      },
+      toggleKnob: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        background: 'var(--dsw-alias-label-primary)',
+      },
     }
 
     /**
@@ -685,6 +716,7 @@ window.__ModuleLoader__.load({
       const key = useKeySection()
       const state = key.state
       const busy = state.busy !== null
+      const rejectOn = key.rejectOnBudgetExhausted === true
 
       // Ask once on arrival: the section owes the reader its own answer before the reader clicks
       // anything, and read() is the one projection this page needs (where the key lives), not the
@@ -743,6 +775,31 @@ window.__ModuleLoader__.load({
         ),
         React.createElement(
           'div',
+          { key: 'toggle', style: settingsStyles.toggle },
+          React.createElement('span', null, SETTINGS.rejectLabel),
+          React.createElement(
+            'button',
+            {
+              key: 'toggle-button',
+              type: 'button',
+              disabled: busy,
+              onClick: function () { void key.setRejectOnBudgetExhausted(!rejectOn) },
+              style: {
+                ...settingsStyles.toggleBox,
+                background: rejectOn ? 'var(--dsw-alias-bg-success)' : 'var(--dsw-alias-bg-base)',
+              },
+            },
+            React.createElement('div', {
+              style: {
+                ...settingsStyles.toggleKnob,
+                marginLeft: rejectOn ? 10 : 2,
+              },
+            }),
+          ),
+          React.createElement('span', null, rejectOn ? SETTINGS.rejectOn : SETTINGS.rejectOff),
+        ),
+        React.createElement(
+          'div',
           { key: 'said', style: settingsStyles.note, 'data-multipool-said': 'true' },
           state.said === null || state.said === undefined ? '' : String(state.said),
         ),
@@ -790,6 +847,11 @@ window.__ModuleLoader__.load({
       })
       const draft = draftPair[0]
       const setDraft = draftPair[1]
+      const rejectPair = React.useState(function () {
+        return false
+      })
+      const rejectOnBudgetExhausted = rejectPair[0]
+      const setRejectOnBudgetExhausted = rejectPair[1]
 
       // Every answer the store gives is shown as it gave it: the writer in key-store.ts already
       // wraps its own refusals in the store's words, and re-wording them here would put a
@@ -855,6 +917,18 @@ window.__ModuleLoader__.load({
         })
       }
 
+      const saveReject = function (value) {
+        setRejectOnBudgetExhausted(value)
+        return commandOf({ name: 'reject-on-budget-exhausted', value: value }).then(function (outcome) {
+          if (outcome.ok !== true) {
+            // Revert on refusal: the host said no, so the local state must not claim yes.
+            setRejectOnBudgetExhausted(!value)
+            say(outcome.message === undefined || outcome.message === null ? outcome.reason : outcome.message, null)
+          }
+          return outcome
+        })
+      }
+
       return {
         state: state,
         draft: draft,
@@ -863,6 +937,8 @@ window.__ModuleLoader__.load({
         forget: forget,
         test: test,
         read: read,
+        rejectOnBudgetExhausted: rejectOnBudgetExhausted,
+        setRejectOnBudgetExhausted: saveReject,
       }
     }
 

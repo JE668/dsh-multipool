@@ -279,7 +279,7 @@ export function apply(ctx, options = {}) {
                         effect: ctx.effect,
                         inject: ctx.inject,
                         llm,
-                    }, { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted });
+                    }, { facts, nowMs });
                     interceptDisposer = intercept.disposer;
                     interceptHooks = intercept.hooks;
                 }
@@ -346,8 +346,19 @@ export function apply(ctx, options = {}) {
                 return;
             drops.push(reportKeyInto(child, facts, onKeyStatus));
             // The write half is handed to the page, not used here. apply() still writes nothing itself.
-            if (options.acceptsWrites !== false)
-                channel.offer(writesFor(seam));
+            if (options.acceptsWrites !== false) {
+                const writes = writesFor(seam);
+                channel.offer({
+                    ...writes,
+                    // The settings section flips this toggle; the intercept layer reads it on every AMD
+                    // request. Writing it into shared `facts` keeps both halves on the same value without
+                    // a second round-trip.
+                    rejectOnBudgetExhausted: (value) => {
+                        facts.rejectOnBudgetExhausted = value;
+                        return Promise.resolve({ ok: true, value: true });
+                    },
+                });
+            }
         }));
         if (interceptDisposer !== undefined)
             drops.push(interceptDisposer);

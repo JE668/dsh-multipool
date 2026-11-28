@@ -228,7 +228,7 @@ export const AMD_KEY_REF_NAME = 'AMD_API_KEY'
  * somewhere": each names one seam method (set, unset) and the one reference it may touch. A page
  * that could ask for an arbitrary ref would be asking this plugin to hold somebody else's key.
  */
-export type ChannelCommandName = 'save' | 'forget'
+export type ChannelCommandName = 'save' | 'forget' | 'reject-on-budget-exhausted'
 
 /** Refused because the name is not one of the two; nothing was attempted. */
 export const COMMAND_UNKNOWN = 'unknown command'
@@ -271,6 +271,12 @@ export interface CommandOutcome {
 export interface ChannelWrites {
   readonly save: (key: string) => Promise<CommandOutcome>
   readonly forget: () => Promise<CommandOutcome>
+  /**
+   * Step 2 gate toggle: the page's settings section sets this, and the intercept layer
+   * reads it on every AMD request. Absent on installs without a credential service, which
+   * keeps the toggle invisible where there is nothing to gate.
+   */
+  readonly rejectOnBudgetExhausted?: (value: boolean) => Promise<CommandOutcome>
 }
 
 export interface PublishedView {
@@ -361,9 +367,10 @@ export function buildPublishedView(
 /** The name a command request carries. One field, because there is one question. */
 const COMMAND_NAME = 'name'
 const COMMAND_KEY = 'key'
+const COMMAND_VALUE = 'value'
 
 /**
- * Every command name this channel answers -- the write ones, two of them.
+ * Every command name this channel answers -- the write ones, three of them.
  *
  * 'test' is deliberately not here. It is an endpoint of its own (ENDPOINT_TEST), answered by
  * answerOf() with the source in hand, because it is not a write and must keep working on an install
@@ -371,7 +378,7 @@ const COMMAND_KEY = 'key'
  * "unknown command" and start being "test is not a write": a right sentence in the wrong mouth,
  * from a table that should never have learned the word.
  */
-const KNOWN_COMMANDS: readonly string[] = ['save', 'forget']
+const KNOWN_COMMANDS: readonly string[] = ['save', 'forget', 'reject-on-budget-exhausted']
 
 /**
  * Run one command, or say why it cannot run.
@@ -396,6 +403,11 @@ async function dispatch(
   }
   if (writes === undefined) return { ok: false, reason: COMMAND_NO_WRITES }
   if (name === 'forget') return await writes.forget()
+  if (name === 'reject-on-budget-exhausted') {
+    const value = fields === undefined ? undefined : fields[COMMAND_VALUE]
+    if (typeof value !== 'boolean') return { ok: false, reason: COMMAND_MALFORMED }
+    return await writes.rejectOnBudgetExhausted?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES }
+  }
   // The key text is passed through as the store will see it: this layer validates the name, not
   // the value, and key-store.ts is where docs/02 section 1.2 and 1.9 decide what a key may be.
   const key = fields === undefined ? undefined : fields[COMMAND_KEY]

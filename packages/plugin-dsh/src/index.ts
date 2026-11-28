@@ -151,8 +151,6 @@ const writesFor = (seam: CredentialSeam): ChannelWrites => ({
   save: (key: string) => writeKeyStatus({ credentials: seam }, key, AMD_KEY_REF_NAME).then(outcomeOf),
   forget: () => clearKeyStatus({ credentials: seam }, AMD_KEY_REF_NAME).then(outcomeOf),
 })
-
-
 /**
  * The service dsh-host-webserver registers. The namespaced package is the implementation; this is the
  * only spelling a context answers a get() for.
@@ -408,7 +406,7 @@ export function apply(
               inject: ctx.inject,
               llm,
             },
-            { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted },
+            { facts, nowMs },
           )
           interceptDisposer = intercept.disposer
           interceptHooks = intercept.hooks
@@ -495,7 +493,19 @@ export function apply(
       if (seam === undefined) return
       drops.push(reportKeyInto(child, facts, onKeyStatus))
       // The write half is handed to the page, not used here. apply() still writes nothing itself.
-      if (options.acceptsWrites !== false) channel.offer(writesFor(seam))
+      if (options.acceptsWrites !== false) {
+        const writes = writesFor(seam)
+        channel.offer({
+          ...writes,
+          // The settings section flips this toggle; the intercept layer reads it on every AMD
+          // request. Writing it into shared `facts` keeps both halves on the same value without
+          // a second round-trip.
+          rejectOnBudgetExhausted: (value: boolean) => {
+            facts.rejectOnBudgetExhausted = value
+            return Promise.resolve({ ok: true, value: true })
+          },
+        })
+      }
     }))
 
     if (interceptDisposer !== undefined) drops.push(interceptDisposer)

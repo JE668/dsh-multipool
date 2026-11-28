@@ -141,8 +141,9 @@ export function buildPublishedView(source, budget, pointsProviderId) {
 /** The name a command request carries. One field, because there is one question. */
 const COMMAND_NAME = 'name';
 const COMMAND_KEY = 'key';
+const COMMAND_VALUE = 'value';
 /**
- * Every command name this channel answers -- the write ones, two of them.
+ * Every command name this channel answers -- the write ones, three of them.
  *
  * 'test' is deliberately not here. It is an endpoint of its own (ENDPOINT_TEST), answered by
  * answerOf() with the source in hand, because it is not a write and must keep working on an install
@@ -150,7 +151,7 @@ const COMMAND_KEY = 'key';
  * "unknown command" and start being "test is not a write": a right sentence in the wrong mouth,
  * from a table that should never have learned the word.
  */
-const KNOWN_COMMANDS = ['save', 'forget'];
+const KNOWN_COMMANDS = ['save', 'forget', 'reject-on-budget-exhausted'];
 /**
  * Run one command, or say why it cannot run.
  *
@@ -173,6 +174,12 @@ async function dispatch(request, writes, isClosed) {
         return { ok: false, reason: COMMAND_NO_WRITES };
     if (name === 'forget')
         return await writes.forget();
+    if (name === 'reject-on-budget-exhausted') {
+        const value = fields === undefined ? undefined : fields[COMMAND_VALUE];
+        if (typeof value !== 'boolean')
+            return { ok: false, reason: COMMAND_MALFORMED };
+        return await writes.rejectOnBudgetExhausted?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES };
+    }
     // The key text is passed through as the store will see it: this layer validates the name, not
     // the value, and key-store.ts is where docs/02 section 1.2 and 1.9 decide what a key may be.
     const key = fields === undefined ? undefined : fields[COMMAND_KEY];

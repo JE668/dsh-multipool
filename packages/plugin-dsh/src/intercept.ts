@@ -93,6 +93,8 @@ export function createIntercept(
     queued: number | undefined
     keyLayer: string | undefined
     reading?: 'unread' | 'read' | 'empty'
+    /** Step 2 gate toggle: the settings section flips this; absent means off. */
+    rejectOnBudgetExhausted?: boolean
   }
 
   // 5) lastAttemptMs shared with apply()'s usage hook so polls inside the minute are carried,
@@ -128,7 +130,8 @@ export function createIntercept(
 
       // Step 2: reject before 429 when the opt-in switch is on.
       // Default off: tryAcquire logs budget but does not block, nothing changes a routing decision.
-      if (!reservation.ok && options.rejectOnBudgetExhausted) {
+      // Read from shared facts each time so the settings section can flip it live.
+      if (!reservation.ok && (facts.rejectOnBudgetExhausted ?? false)) {
         const waitMs = reservation.waitMs ?? 0
         const errorBody = JSON.stringify({
           error: {

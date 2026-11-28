@@ -56,7 +56,8 @@ export function createIntercept(ctx, options = {}) {
             const reservation = gate.tryAcquire('chat');
             // Step 2: reject before 429 when the opt-in switch is on.
             // Default off: tryAcquire logs budget but does not block, nothing changes a routing decision.
-            if (!reservation.ok && options.rejectOnBudgetExhausted) {
+            // Read from shared facts each time so the settings section can flip it live.
+            if (!reservation.ok && (facts.rejectOnBudgetExhausted ?? false)) {
                 const waitMs = reservation.waitMs ?? 0;
                 const errorBody = JSON.stringify({
                     error: {
