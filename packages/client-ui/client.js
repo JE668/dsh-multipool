@@ -884,6 +884,29 @@ window.__ModuleLoader__.load({
 
     var PANEL_LABEL = 'DSH Multipool'
 
+    var COLUMNS = [
+      '\u65f6\u523b',
+      '\u6a21\u578b',
+      '\u72b6\u6001',
+      '\u9650\u6d41',
+      '\u8017\u65f6 ms',
+      '\u8f93\u5165 token',
+      '\u8f93\u51fa token',
+      '\u7b2c\u51e0\u6b21',
+      '\u6392\u961f ms',
+    ]
+
+    /**
+     * The line above the table, and the two facts it exists to state.
+     *
+     * "Only this session" is not a filter this page chose to be tidy -- rows are folded from the
+     * host's own counters, and those begin when this process does (docs/06 T-3-b, the second half
+     * of the question asked there). Saying it once, above the table, is cheaper than a reader
+     * concluding from a short list that the pool was quiet all month.
+     */
+    var TABLE_NOTE = '\u672c\u6b21\u542f\u52a8\u4ee5\u540e\uff1b\u66f4\u65e9\u7684\u4e0d\u5728\u8fd9\u91cc\u3002'
+    var TABLE_EMPTY = '\u8fd8\u6ca1\u6709\u8bb0\u5f55\u5230\u8bf7\u6c42\u3002'
+
     /**
      * The minute, as a person reads a clock.
      *
@@ -892,11 +915,64 @@ window.__ModuleLoader__.load({
      * local zone would put the daily reset in the middle of its own hour. Only the clock of a single
      * minute is drawn -- the day is already on the label beside it.
      */
+    /**
+     * Two digits, from a number that is already one or two.
+     *
+     * It lives here rather than in core because it is punctuation for a clock face, not
+     * arithmetic: nine o'clock is "09:05" to a reader, and "9:5" is a typo wearing a
+     * timestamp's clothes.
+     */
+    function pad2(value) {
+      return value < 10 ? '0' + String(value) : String(value)
+    }
+
+    function clockOf(atMs) {
+      if (typeof atMs !== 'number' || !isFinite(atMs)) return String(atMs)
+      var minutes = Math.floor(atMs / 60000)
+      var ofDay = ((minutes % 1440) + 1440) % 1440
+      return pad2(Math.floor(ofDay / 60)) + ':' + pad2(ofDay % 60)
+    }
+
     function hourLabelOf(atMs) {
       if (typeof atMs !== 'number' || !isFinite(atMs)) return String(atMs)
       var minutes = Math.floor(atMs / 60000)
       var ofDay = ((minutes % 1440) + 1440) % 1440
       return pad2(Math.floor(ofDay / 60)) + ':' + pad2(ofDay % 60)
+    }
+
+    /**
+     * One cell of the table, as text.
+     *
+     * Null and undefined both become the em dash, and neither becomes "0" or "0ms": a cell that says
+     * the event carried no such figure is a different claim from a cell that says the figure was
+     * zero, and the table is the one place in the panel where every column has to make that
+     * distinction on every row (docs/07 U-06).
+     */
+    function cellOf(value) {
+      if (value === null || value === undefined) return NO_VALUE
+      if (typeof value === 'number' && !isFinite(value)) return NO_VALUE
+      return String(value)
+    }
+
+    /**
+     * A row as the table prints it: the clock, then the facts, then the counts that may be absent.
+     *
+     * The status does not go through cellOf with the same shrug the rest do -- an event with no
+     * status is not a request we know little about, it is verbatim something that should never have
+     * been recorded, and a dash in that column would hide it from the one reader looking for it.
+     */
+    function cellsOf(row) {
+      return [
+        clockOf(row.atMs),
+        cellOf(row.modelId),
+        cellOf(row.status),
+        cellOf(row.rateKind),
+        cellOf(row.latencyMs),
+        cellOf(row.promptTokens),
+        cellOf(row.completionTokens),
+        cellOf(row.attempt),
+        cellOf(row.queueWaitMs),
+      ]
     }
 
     /**
@@ -953,6 +1029,26 @@ window.__ModuleLoader__.load({
           lineHeight: '18px',
           whiteSpace: 'pre-wrap',
         },
+        table: {
+          borderCollapse: 'collapse',
+          fontFamily: 'var(--dsw-font-mono)',
+          fontSize: 11,
+          lineHeight: '16px',
+          fontVariantNumeric: 'tabular-nums',
+        },
+        head: {
+          textAlign: 'left',
+          fontWeight: 600,
+          color: 'var(--dsw-alias-label-tertiary)',
+          padding: '0 8px 0 0',
+          borderBottom: '1px solid var(--dsw-alias-border-secondary)',
+        },
+        cell: {
+          textAlign: 'left',
+          color: 'var(--dsw-alias-label-secondary)',
+          padding: '2px 8px 2px 0',
+          whiteSpace: 'nowrap',
+        },
       }
 
       const rows = [
@@ -1000,11 +1096,45 @@ window.__ModuleLoader__.load({
             }),
           )
 
+      // The rows, newest first, exactly as rowsOf() ordered them -- the drawer does not sort, because
+      // a sort here would be a second opinion about what "unknown" means and the two opinions would
+      // eventually disagree (docs/07 U-07).
+      const table = hour === null || hour.rows.length === 0
+        ? React.createElement('div', { key: 'table', style: styles.note, 'data-multipool-table': 'empty' },
+            TABLE_EMPTY)
+        : React.createElement(
+            'table',
+            {
+              key: 'table',
+              style: styles.table,
+              'data-multipool-table': 'rows',
+            },
+            React.createElement('thead', { key: 'head' },
+              React.createElement('tr', { key: 'head-row' },
+                COLUMNS.map(function (name) {
+                  return React.createElement('th', { key: name, style: styles.head }, name)
+                }),
+              ),
+            ),
+            React.createElement('tbody', { key: 'body' },
+              hour.rows.map(function (row) {
+                return React.createElement('tr', { key: row.requestId },
+                  cellsOf(row).map(function (cell, index) {
+                    return React.createElement('td', { key: COLUMNS[index], style: styles.cell }, cell)
+                  }),
+                )
+              }),
+            ),
+          )
+
       const children = [
         React.createElement('div', { key: 'title', style: styles.title },
           'AMD \u8d26\u53f7\u6c60'),
         React.createElement('div', { key: 'rows' }, rows),
         curve,
+        React.createElement('div', { key: 'table-note', style: styles.note, 'data-multipool-table-note': 'true' },
+          TABLE_NOTE),
+        table,
       ]
 
       return React.createElement(
@@ -1097,6 +1227,7 @@ window.__ModuleLoader__.load({
       whereOf: whereOf,
       dashboardOf: dashboardOf,
       hourOf: hourOf,
+      cellsOf: cellsOf,
     }
   },
 })

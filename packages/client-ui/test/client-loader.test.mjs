@@ -452,6 +452,32 @@ test('a carried hour with no traffic in it is an empty figure, not a flat line a
   // And the absence of a host is folded to nothing at all, never to an hour of zeroes.
   assert.equal(factory(null).hourOf(null), null)
 })
+test('a cell the event never carried is a dash, and a counted zero is still a zero', () => {
+  const drawer = factory(null)
+  const born = {
+    atMs: 0,
+    requestId: 'req-1',
+    accountAlias: 'acct-a',
+    keyIdMasked: 'rc-****1a2b',
+    modelId: 'DeepSeek-V4-Flash',
+    status: 200,
+    promptTokens: null,
+    completionTokens: 0,
+    latencyMs: 812,
+    attempt: 1,
+    concurrencyAtSend: 1,
+    queueWaitMs: null,
+  }
+  const cells = drawer.cellsOf(born)
+  assert.equal(cells.length, 9)
+  // Missing is missing. Zero is zero. The table may not round one into the other (docs/07 U-06).
+  assert.equal(cells[5], core.NO_VALUE)
+  assert.equal(cells[6], '0')
+  assert.equal(cells[8], core.NO_VALUE)
+  assert.equal(cells[4], '812')
+  // An absent rate kind is a dash in the table, not the word "undefined" on the page.
+  assert.equal(cells[3], core.NO_VALUE)
+})
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
