@@ -467,6 +467,68 @@ window.__ModuleLoader__.load({
     }
 
     var COMMAND_FAILED = 'command failed'
+
+    /*
+     * The drawing rules of core/dashboard.ts, copied.
+     *
+     * Same reason ptsOf and hourOf are copied: the page's module table has one seed word, so this
+     * file cannot require the rest of the package. Each copy is held to its original by
+     * parity.test.ts; a copy that drifts is a copy that test calls wrong.
+     *
+     * The constants are literals here and named there because this file's copy is read by the
+     * browser, not by a compiler -- the parity table compares behaviour, and PLOT_WIDTH is only a
+     * convenience for whoever reads the geometry below.
+     */
+    var PLOT_WIDTH = 320
+    var PLOT_HEIGHT = 96
+    var PLOT_PAD_X = 6
+    var PLOT_PAD_Y = 12
+
+    function plotUnits(value) {
+      return value.toFixed(1)
+    }
+
+    /**
+     * The hour cut where nothing was measured.
+     *
+     * Returns one point-string per unbroken run. A minute whose rate is null starts nothing: joining
+     * it to its neighbours would draw the pool at zero percent at the one moment it is wrong to draw
+     * it at anything at all (docs/07 U-08).
+     */
+    function plotRunsOf(trend) {
+      var plotWidth = PLOT_WIDTH - PLOT_PAD_X * 2
+      var plotHeight = PLOT_HEIGHT - PLOT_PAD_Y * 2
+      var span = Math.max(1, trend.length - 1)
+      var runs = []
+      var current = []
+      for (var index = 0; index < trend.length; index += 1) {
+        var point = trend[index]
+        var rate = point === undefined ? null : point.rate
+        if (rate === null || rate === undefined) {
+          if (current.length > 0) runs.push(current)
+          current = []
+          continue
+        }
+        var share = Number(rate.value)
+        var safe = isFinite(share) ? Math.min(100, Math.max(0, share)) : 0
+        current.push(
+          plotUnits(PLOT_PAD_X + (index / span) * plotWidth) +
+            ',' +
+            plotUnits(PLOT_PAD_Y + (1 - safe / 100) * plotHeight),
+        )
+      }
+      if (current.length > 0) runs.push(current)
+      return runs.map(function (run) {
+        return run.join(' ')
+      })
+    }
+
+    function plotNoteOf(answered, measured) {
+      if (!answered) return '\u5c1a\u672a\u542c\u5230\u5bbf\u4e3b'
+      if (measured === 0) return '\u8fd8\u6ca1\u6709\u4efb\u4f55\u8bb0\u5f55'
+      return '\u8fd9\u4e00\u5c0f\u65f6\u91cc\u6709 ' + String(measured) + ' \u5206\u949f\u5728\u8d70\u8bf7\u6c42'
+    }
+
     var LEVEL_TOKEN = {
       green: '--dsw-alias-state-success-primary',
       yellow: '--dsw-alias-state-warn-primary',
@@ -1065,25 +1127,27 @@ window.__ModuleLoader__.load({
       // Drawn as one polyline per unbroken run: a minute with no requests ends a run, and a line
       // through that break is the invented floor this whole task is about (docs/07 U-08).
       const folded = hourOf(hour)
-      const figure = folded === null || folded.measured === 0 ? null : trendFigureOf(folded.trend, hourLabelOf)
+      // An hour with minutes but no rate in it is not a figure -- it is the same blank box as no hour
+      // at all, and it gets the same sentence, because the drawer has measured nothing either way.
+      const runs = folded === null ? [] : plotRunsOf(folded.trend)
       const stroke = levelColor(view.level)
-      const curve = figure === null
+      const curve = runs.length === 0
         ? React.createElement(
             'div',
             { key: 'curve', style: styles.note, 'data-multipool-curve': 'none' },
-            trendNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+            plotNoteOf(hour !== null, folded === null ? 0 : folded.measured),
           )
         : React.createElement(
             'svg',
             {
               key: 'curve',
-              viewBox: '0 0 ' + String(figure.width) + ' ' + String(figure.height),
+              viewBox: '0 0 ' + String(PLOT_WIDTH) + ' ' + String(PLOT_HEIGHT),
               width: '100%',
-              height: String(figure.height),
+              height: String(PLOT_HEIGHT),
               style: { display: 'block', overflow: 'visible' },
               'data-multipool-curve': 'line',
             },
-            figure.lines.map(function (points, index) {
+            runs.map(function (points, index) {
               return React.createElement('polyline', {
                 key: 'run-' + String(index),
                 points: points,
