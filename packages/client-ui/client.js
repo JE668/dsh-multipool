@@ -1842,36 +1842,31 @@ window.__ModuleLoader__.load({
             ),
           ),
         )
-        // The settings page is the third half of the same plugin, not a separate one: it lives
-        // inside Settings' own list slot, and it cannot exist before Settings does. Every other
-        // slot here is declared by a plugin this profile always loads; this one is declared by
-        // client-ui-settings-general, inside a whenAccess for the host's settings/describe, so an
-        // install that composed no settings shell has no such slot and this inject is a no-op.
-        ctx.slots.inject('settings.section', () =>
-          ctx.slots.register(
-            {
-              name: 'settings.section',
-              id: 'dsh-multipool',
-              order: 40,
-              label: () => PANEL_LABEL,
-              locale: 'dsh-multipool',
-            },
-            MultiPoolSettings,
-          ),
+        // The settings page lives inside Settings' own list slot. Register directly (not via
+        // ctx.slots.inject) so the entry is present when the settings shell reads
+        // entries('settings.section') synchronously on page open. Deferred inject callbacks fire
+        // after the shell has already snapshot the slot list, leaving the page blank.
+        ctx.slots.register(
+          {
+            name: 'settings.section',
+            id: 'dsh-multipool',
+            order: 40,
+            label: () => PANEL_LABEL,
+            locale: 'dsh-multipool',
+          },
+          MultiPoolSettings,
         )
         // T-8-e: Google settings group, fifth slot (order 50). Nothing to save, nothing to read --
         // just prefix hint and PT timezone display.
-        ctx.slots.inject('settings.section', () =>
-          ctx.slots.register(
-            {
-              name: 'settings.section',
-              id: 'dsh-multipool-google',
-              order: 50,
-              label: () => SETTINGS.googleLabel,
-              locale: 'dsh-multipool',
-            },
-            GoogleSettings,
-          ),
+        ctx.slots.register(
+          {
+            name: 'settings.section',
+            id: 'dsh-multipool-google',
+            order: 50,
+            label: () => SETTINGS.googleLabel,
+            locale: 'dsh-multipool',
+          },
+          GoogleSettings,
         )
       },
       // Held out to the tests so icon-state.test.ts can put this copy and the TypeScript one
