@@ -134,6 +134,15 @@ export interface HostOptions {
    * request and response.
    */
   readonly server?: RouteServer
+  /**
+   * The port this plugin's route is served on. Default 18888.
+   *
+   * Marked `applies: 'restart'`: changing the port requires a plugin reload -- a live server
+   * cannot move a claimed prefix to another port without dropping and re-claiming it. Other
+   * settings (rpmAccount, rejectOnBudgetExhausted, dashboardMode) are hot-reload: they take
+   * effect on the next request with no restart.
+   */
+  readonly port?: number
 }
 
 /** The store's answer, turned into what the page's command() hands back. */
