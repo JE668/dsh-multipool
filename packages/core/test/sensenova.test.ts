@@ -5,6 +5,8 @@ import {
   sensenovaBackoff,
   SENSENOVA_ADMIT_RPM,
   SENSENOVA_ADMIT_RPM_HARD_CAP,
+  sensenovaReadHeaders,
+  sensenovaEmptyCatalog,
 } from '../src/index.js'
 
 describe('N-01: SenseNova base and three protocol paths', () => {
@@ -88,5 +90,31 @@ describe('N-10: SenseNova no usage endpoint', () => {
 describe('SenseNova admit limits (catalog)', () => {
   it('admitRpm is 3 (assume)', () => {
     expect(SENSENOVA_ADMIT_RPM).toBe(3)
+  })
+})
+
+describe('SenseNova adapter coverage', () => {
+  it('sensenovaBackoff: start and decelerate', () => {
+    const b1 = sensenovaBackoff('rate_opaque', 1)
+    expect(b1.waitMs).toBe(30_000)
+    const b2 = sensenovaBackoff('rate_opaque', 2)
+    expect(b2.waitMs).toBeGreaterThan(b1.waitMs)
+    const bCap = sensenovaBackoff('rate_opaque', 20)
+    expect(bCap.waitMs).toBeLessThanOrEqual(300_000)
+  })
+
+  it('sensenovaReadHeaders returns null', () => {
+    expect(sensenovaReadHeaders({ status: 200, headers: {}, body: '' })).toBeNull()
+  })
+
+  it('sensenovaEmptyCatalog returns ok=true with empty models', () => {
+    const cat = sensenovaEmptyCatalog()
+    expect(cat.ok).toBe(true)
+    expect(cat.models).toEqual([])
+    expect(typeof cat.fetchedAt).toBe('string')
+  })
+
+  it('classifySensenova: 200 → null', () => {
+    expect(classifySensenova({ status: 200, headers: {}, body: '' })).toBeNull()
   })
 })

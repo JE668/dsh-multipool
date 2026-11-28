@@ -10,6 +10,11 @@
  */
 export const GOOGLE_KEY_PREFIX = 'AIza';
 export const GOOGLE_QUOTA_TIMEZONE = 'America/Los_Angeles';
+/** T-8-d: Google has no usage endpoint. Every call reports 'no-endpoint' so callers never
+ *  guess a balance from /v1beta/models or any other path. */
+export async function googleFetchUsage(_key) {
+    return { available: false, reason: 'no-endpoint' };
+}
 function parseGoogleError(body) {
     try {
         const json = JSON.parse(body);
@@ -20,22 +25,29 @@ function parseGoogleError(body) {
                 return {
                     message: typeof err.message === 'string' ? err.message : null,
                     code: typeof err.code === 'string' ? err.code : null,
+                    quotaId: typeof err.quotaId === 'string' ? err.quotaId : null,
                 };
             }
             // Direct shape: { error: { message } }
             if (typeof json.error === 'string') {
-                return { message: json.error, code: null };
+                return { message: json.error, code: null, quotaId: null };
             }
         }
     }
     catch {
         // not JSON
     }
-    return { message: null, code: null };
+    return { message: null, code: null, quotaId: null };
 }
 export function classifyGoogle(res) {
-    if (res.status === 429)
-        return 'rate_opaque'; // Google 429 可由 RPM/RPD/quotaId 引起，细分需 quotaId
+    if (res.status === 429) {
+        const parsed = parseGoogleError(res.body);
+        // Google 429 can be RPM, RPD, or quotaId-based. A quotaId that names a daily quota
+        // means the account won't succeed today: classify as daily_quota, not rate_opaque.
+        if (parsed.quotaId !== null && /daily/i.test(parsed.quotaId))
+            return 'daily_quota';
+        return 'rate_opaque'; // 需要 quotaId 细分，本地不能猜
+    }
     if (res.status === 403)
         return 'auth'; // 403 通常是 API Key 问题
     if (res.status === 404)
@@ -69,7 +81,7 @@ export function googleReadHeaders(res) {
     // Google 返回 X-RateLimit-Limit 等头，但按模型取值，适配器层不做全局解析
     return null;
 }
-export const GOOGLE_FETCH_USAGE = undefined;
+export { googleFetchUsage as GOOGLE_FETCH_USAGE };
 export function googleEmptyCatalog() {
     return { ok: true, models: [], fetchedAt: new Date().toISOString() };
 }

@@ -277,12 +277,13 @@
 ### T-7-a 单测覆盖率闸门
 - `packages/core` 行覆盖 ≥ 85%，分支 ≥ 80%；解析器 fixture 全覆盖。
 
-### T-7-b 真机联调脚本
+### T-7-b 真机联调脚本 (✓ 已完成)
 - `scripts/smoke.ts`：五家各 1 Key，跑「拉模型 → 1 次对话 → 拉用量（有端点者）→ 打印结果摘要（脱敏）」。
 - 无 Key 时打印 `skipped`，不失败。
 
-### T-7-c README + 截图
-- 安装、配置、已知限制（NIM 40 非官方、SenseNova 无用量 API、Agnes 无用量 API、creditsPerUsd 假设）、常见问题。
+### T-7-c README + 截图 (✓ 已完成)
+- `README.md`：安装、配置、已知限制（NIM 40 非官方、SenseNova 无用量 API、Agnes 无用量 API、creditsPerUsd 假设）、常见问题。
+- 截图：阶段 7 完成后补齐（需真机截面板）。
 
 ### T-7-d `gh` 推送
 - `gh repo create dsh-multipool --private --source=. --push`（用户确认 private 还是 public）。

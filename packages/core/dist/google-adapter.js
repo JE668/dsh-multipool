@@ -10,6 +10,11 @@
  */
 export const GOOGLE_KEY_PREFIX = 'AIza';
 export const GOOGLE_QUOTA_TIMEZONE = 'America/Los_Angeles';
+/** T-8-d: Google has no usage endpoint. Every call reports 'no-endpoint' so callers never
+ *  guess a balance from /v1beta/models or any other path. */
+export async function googleFetchUsage(_key) {
+    return { available: false, reason: 'no-endpoint' };
+}
 function parseGoogleError(body) {
     try {
         const json = JSON.parse(body);
@@ -76,7 +81,7 @@ export function googleReadHeaders(res) {
     // Google 返回 X-RateLimit-Limit 等头，但按模型取值，适配器层不做全局解析
     return null;
 }
-export const GOOGLE_FETCH_USAGE = undefined;
+export { googleFetchUsage as GOOGLE_FETCH_USAGE };
 export function googleEmptyCatalog() {
     return { ok: true, models: [], fetchedAt: new Date().toISOString() };
 }

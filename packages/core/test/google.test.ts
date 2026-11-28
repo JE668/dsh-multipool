@@ -6,6 +6,8 @@ import {
   GOOGLE_KEY_PREFIX,
   GOOGLE_QUOTA_TIMEZONE,
   GOOGLE_FETCH_USAGE,
+  googleReadHeaders,
+  googleEmptyCatalog,
   stripModelsPrefix,
   addModelsPrefix,
 } from '../src/index.js'
@@ -146,5 +148,38 @@ describe('T-8-d: Google fetchUsage returns no-endpoint', () => {
     const result = await GOOGLE_FETCH_USAGE('any-key')
     expect(result.available).toBe(false)
     expect(result.reason).toBe('no-endpoint')
+  })
+})
+
+describe('Google adapter coverage', () => {
+  it('parseGoogleError: direct string error shape', () => {
+    // This tests line 37-38: typeof json.error === 'string'
+    const rc = classifyGoogle({ status: 400, headers: {}, body: '{"error":"bad request"}' })
+    expect(rc).toBeNull()
+  })
+
+  it('classifyGoogleTransport: 429 → unknown', () => {
+    expect(classifyGoogleTransport({ status: 429, headers: {}, body: '' })).toBe('unknown')
+  })
+
+  it('classifyGoogleTransport: 400 → client_4xx', () => {
+    expect(classifyGoogleTransport({ status: 400, headers: {}, body: '' })).toBe('client_4xx')
+  })
+
+  it('googleReadHeaders returns null', () => {
+    expect(googleReadHeaders({ status: 200, headers: {}, body: '' })).toBeNull()
+  })
+
+  it('googleEmptyCatalog returns ok=true with empty models', () => {
+    const cat = googleEmptyCatalog()
+    expect(cat.ok).toBe(true)
+    expect(cat.models).toEqual([])
+    expect(typeof cat.fetchedAt).toBe('string')
+  })
+
+  it('googleBackoff: capped at 60s', () => {
+    const b = googleBackoff('rate_opaque', 20)
+    expect(b.waitMs).toBeLessThanOrEqual(60_000)
+    expect(b.jitterMs).toBeGreaterThanOrEqual(0)
   })
 })

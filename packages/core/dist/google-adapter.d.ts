@@ -8,14 +8,17 @@
  * dailyQuota 按模型 rpd；quotaTimezone=America/Los_Angeles。
  * 无用量端点。
  */
-import type { AdapterResponse, Backoff, HeaderSnapshot, RateClass } from './contract.js';
+import type { AdapterResponse, Backoff, HeaderSnapshot, RateClass, UsageResult } from './contract.js';
 export declare const GOOGLE_KEY_PREFIX = "AIza";
 export declare const GOOGLE_QUOTA_TIMEZONE = "America/Los_Angeles";
+/** T-8-d: Google has no usage endpoint. Every call reports 'no-endpoint' so callers never
+ *  guess a balance from /v1beta/models or any other path. */
+export declare function googleFetchUsage(_key: string): Promise<UsageResult>;
 export declare function classifyGoogle(res: AdapterResponse): RateClass | null;
 export declare function classifyGoogleTransport(res: AdapterResponse): 'ok' | 'upstream_5xx' | 'client_4xx' | 'network' | 'unknown';
 export declare function googleBackoff(rc: RateClass, attempt: number): Backoff;
 export declare function googleReadHeaders(res: AdapterResponse): HeaderSnapshot | null;
-export declare const GOOGLE_FETCH_USAGE: undefined;
+export { googleFetchUsage as GOOGLE_FETCH_USAGE };
 export declare function googleEmptyCatalog(): {
     ok: true;
     models: [];

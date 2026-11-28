@@ -13,7 +13,7 @@
  * - It does NOT own credentials injection, key-status watching, or channel/serveOn. apply()
  *   does those; this layer only reads the shared `facts` object and hooks into llm.stream.
  */
-import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, AccountGate, computeBudget, createSystemClock, createMetricsStore, READING_MINUTES, READING_ROWS, rowsOf, trendOf, concurrencyOf, heatOf, } from './vendor/core/index.js';
+import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, AccountGate, computeBudget, createSystemClock, createMetricsStore, READING_MINUTES, READING_ROWS, rowsOf, trendOf, concurrencyOf, heatOf, accountAfterVerdict, } from './vendor/core/index.js';
 import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js';
 import { AMD_KEY_REF_NAME } from './channel.js';
 export function createIntercept(ctx, options = {}) {
@@ -120,6 +120,26 @@ export function createIntercept(ctx, options = {}) {
                 const headerRemaining = parseHeaderRemaining(responseHeaders);
                 if (headerRemaining !== null)
                     gate.observeHeaders(headerRemaining);
+                // A-19: apply cooling reason to the account that produced this response.
+                // accountAfterVerdict maps each RateClass (rpm_key / rpm_ip / concurrency /
+                // daily_quota) to a distinct cooldownReason so the UI can show "why" and "for how long".
+                if (rateKind !== null && facts.accounts) {
+                    const retryAfter = retryAfterMsOf({ status: responseStatus, headers: responseHeaders, body: responseBody }, nowMs());
+                    const verdict = {
+                        rateClass: rateKind,
+                        retryAfterMs: retryAfter,
+                    };
+                    const alias = keyFrame?.accountAlias ?? 'unknown';
+                    const idx = facts.accounts.findIndex((a) => a.accountAlias === alias);
+                    const target = facts.accounts[idx];
+                    if (idx >= 0 && target !== undefined) {
+                        facts.accounts = [
+                            ...facts.accounts.slice(0, idx),
+                            accountAfterVerdict(target, verdict, nowMs()),
+                            ...facts.accounts.slice(idx + 1),
+                        ];
+                    }
+                }
             }
             catch {
                 // Network/transport error
