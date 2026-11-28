@@ -210,6 +210,13 @@ export {
   type DetailRow,
 } from './amd-table.js'
 export {
+  PLOT_HEIGHT,
+  PLOT_WIDTH,
+  trendFigureOf,
+  trendNoteOf,
+  type TrendFigure,
+} from './dashboard.js'
+export {
   AMD_BOUNDS,
   AMD_REJECTED_HOST_FRAGMENT,
   AMD_REJECTED_KEY_PREFIX,

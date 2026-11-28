@@ -22,5 +22,6 @@ export { ALL_PROVIDERS, PROVIDER_ORDER, buildSnapshot, emptySnapshot, providerSn
 export { READING_MINUTES, READING_ROWS, } from './reading.js';
 export { COUNTERS_REF, MINUTE_MS, trendOf, } from './amd-trend.js';
 export { rowsOf, sortRows, } from './amd-table.js';
+export { PLOT_HEIGHT, PLOT_WIDTH, trendFigureOf, trendNoteOf, } from './dashboard.js';
 export { AMD_BOUNDS, AMD_REJECTED_HOST_FRAGMENT, AMD_REJECTED_KEY_PREFIX, PROVIDER_BASE_URLS, baseUrlIsReadOnly, validateAmdKey, validateConcurrency, validateRpm, } from './amd-settings.js';
 //# sourceMappingURL=index.js.map

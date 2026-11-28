@@ -380,6 +380,36 @@ test('a carried count is spoken here, not quoted from the host', () => {
   assert.match(car, new RegExp('\u6cbf\u7528'))
   assert.match(car, /0\.65 \/ 1 pts/)
 })
+test('a blank figure is a sentence either way, and the two sentences are not the same', () => {
+  // The drawer cannot say which of these it saw by drawing: both are a blank box. It may only say
+  // it in words. If the two notes ever collapse into one string, the page has stopped being able to
+  // tell "nobody is listening" from "nobody has asked yet" -- the distinction this plugin exists to
+  // keep apart (docs/07 U-08).
+  const idleNote = core.trendNoteOf(true, 0)
+  const silentNote = core.trendNoteOf(false, 0)
+  const busyNote = core.trendNoteOf(true, 5)
+  assert.equal(idleNote, 'trend: nothing recorded yet')
+  assert.equal(silentNote, 'trend: no host answered')
+  assert.notEqual(idleNote, silentNote, 'an idle hour and an unheard hour must not read alike')
+  assert.ok(String(busyNote).includes('5'), 'the note counts what it actually measured')
+})
+
+test('the drawer asks for the hour, and a host that never answers gets no points drawn', () => {
+  const asked = []
+  const quiet = (url) => {
+    asked.push(url)
+    return Promise.resolve(response('{}'))
+  }
+  const drawer = factory(quiet)
+  return drawer.dashboardOf().then((reading) => {
+    assert.equal(reading, null)
+    assert.deepEqual(asked, ['/dsh-multipool/dashboard'])
+    // Nothing measured is not a flat line at zero: no run, no stroke, no floor invented under the
+    // traffic (docs/07 U-08).
+    assert.equal(core.trendFigureOf([], () => '00:00').lines.length, 0)
+  })
+})
+
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })

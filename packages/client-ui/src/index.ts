@@ -19,5 +19,13 @@ export {
   type IconViewInput,
   type ProviderCountLine,
 } from './icon-state.js'
-export { emptySnapshot, PROVIDER_ORDER } from '@dsh-multipool/core'
+export {
+  emptySnapshot,
+  PROVIDER_ORDER,
+  PLOT_HEIGHT,
+  PLOT_WIDTH,
+  trendFigureOf,
+  trendNoteOf,
+} from '@dsh-multipool/core'
+export type { DashboardReading, DetailRow, TrendFigure, TrendPoint } from '@dsh-multipool/core'
 export type { Snapshot, ProviderSnapshot, ProviderId } from '@dsh-multipool/core'

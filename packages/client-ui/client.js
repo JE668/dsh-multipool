@@ -44,6 +44,10 @@ window.__ModuleLoader__.load({
     // write seam is. It has to keep working on an install with no credential service at all, and
     // a write route would not -- commandOf() would return "no credential service" for it.
     var ENDPOINT_TEST = 'test'
+    // The dashboard's two halves -- an hour of minutes folded into a line, and the rows behind it --
+    // come back from one call, because a curve drawn at 10:31:02 beside a table filled at 10:31:05
+    // would be a comparison of two moments presented as one tick (T-3-b).
+    var ENDPOINT_DASHBOARD = 'dashboard'
     var NO_VALUE = '\u2014'
     var ICON_PROVIDER_ORDER = ['amd', 'nim', 'sensenova', 'agnes', 'google']
     var PROVIDER_SHORT_LABELS = { amd: 'AMD', nim: 'NIM', sensenova: 'SenseNova', agnes: 'Agnes', google: 'Google' }
@@ -421,6 +425,21 @@ window.__ModuleLoader__.load({
           // never reports layers is distinguishable from one that reported none.
           if (answer.layer !== undefined) answer.view.layer = answer.layer
           return answer.view
+        },
+      )
+    }
+
+    /** The hour the host folded, or nothing at all -- never a zero drawn in its place. */
+    function dashboardOf() {
+      return ask(ENDPOINT_DASHBOARD, {}).then(
+        function (answer) {
+          // No host, no answer, no story: null is what the panel prints a sentence for.
+          if (answer === undefined || answer === null) return null
+          if (answer.trend === undefined || answer.rows === undefined) return null
+          return answer
+        },
+        function () {
+          return null
         },
       )
     }
@@ -987,6 +1006,7 @@ window.__ModuleLoader__.load({
       testOf: testOf,
       sentenceOf: sentenceOf,
       whereOf: whereOf,
+      dashboardOf: dashboardOf,
     }
   },
 })
