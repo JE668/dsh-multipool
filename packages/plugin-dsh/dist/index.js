@@ -29,7 +29,7 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
-import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClock, } from './vendor/core/index.js';
+import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClock, READING_MINUTES, READING_ROWS, rowsOf, trendOf, } from './vendor/core/index.js';
 import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
@@ -277,6 +277,16 @@ export function apply(ctx, options = {}) {
             readUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
                 lastAttemptMs = stamp;
             }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
+            // The table half is capped to the same hour the curve covers, so the two cannot disagree
+            // about how far back this page is talking. Nothing here reads the clock for itself: nowMs
+            // is the one the facts were built with, and trendOf() floors it.
+            readDashboard: () => {
+                const events = facts.events ?? [];
+                return {
+                    trend: trendOf(events, nowMs(), READING_MINUTES),
+                    rows: rowsOf(events, READING_ROWS),
+                };
+            },
         };
         const source = channelSourceFrom(facts, nowMs, hooks);
         const budget = RAIL_BUDGET;
@@ -325,5 +335,5 @@ export function apply(ctx, options = {}) {
 export { NOTHING_READ, channelSourceFrom } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey, keyStateOf, saveAmdKey } from './key-store.js';
-export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
+export { CHANNEL, ENDPOINT_COMMAND, ENDPOINT_DASHBOARD, ENDPOINT_READING, ENDPOINT_SNAPSHOT, ENDPOINT_TEST, answerOf, buildPublishedView, openChannel, routeOf, serveOn, } from './channel.js';
 //# sourceMappingURL=index.js.map

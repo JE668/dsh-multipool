@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   CHANNEL,
   ENDPOINT_COMMAND,
+  ENDPOINT_DASHBOARD,
   ENDPOINT_SNAPSHOT,
   ENDPOINT_READING,
   ENDPOINT_TEST,
@@ -15,6 +16,8 @@ import {
 } from '../src/channel.js'
 import { AMD_KEY_REF, KEY_UPDATED_EVENT, type KeyStatus } from '../src/credentials.js'
 import { RAIL_BUDGET, apply } from '../src/index.js'
+import { READING_MINUTES, READING_ROWS, type DashboardReading } from '@dsh-multipool/core'
+import { NOTHING_READ } from '../src/source.js'
 
 type Listener = (moved: unknown) => void
 
@@ -577,6 +580,47 @@ describe('the host half hands writes to the page, and performs none itself', () 
   })
 })
 
+
+describe('the dashboard gets its hour and its rows in one answer', () => {
+  it('answers ENDPOINT_DASHBOARD with both halves folded from the same facts', async () => {
+    const facts = {
+      ...NOTHING_READ,
+      accounts: [],
+      events: [
+        {
+          ts: 1_000_000_000_000,
+          providerId: 'amd' as const,
+          accountAlias: 'acct-a',
+          keyIdMasked: 'rc-1a2b',
+          modelId: 'DeepSeek-V4-Flash',
+          requestId: 'req-dash-1',
+          status: 200,
+          latencyMs: 120,
+          attempt: 1,
+          concurrencyAtSend: 1,
+        },
+      ],
+    }
+    const arrived = contextOf({ hasInject: true })
+    apply(arrived.context, { server: arrived.server, facts, nowMs: () => 1_000_000_030_000 })
+    const disposers = arrived.effects.map(effect => effect())
+
+    const answered = (await arrived.server.ask(ENDPOINT_DASHBOARD, undefined)) as {
+      ok: boolean
+      value?: DashboardReading
+      error?: { code: string }
+    }
+    // One call, one moment: asked twice, the curve and the table could be from different ticks,
+    // which is the disagreement this endpoint exists to make impossible.
+    expect(answered.error).toBeUndefined()
+    expect(answered.ok).toBe(true)
+    expect(answered.value?.trend.length).toBe(READING_MINUTES)
+    expect(answered.value?.rows.length).toBe(1)
+    expect(answered.value?.rows.length).toBeLessThan(READING_ROWS + 1)
+    expect(answered.value?.rows[0]?.requestId).toBe('req-dash-1')
+    for (const dispose of disposers) dispose()
+  })
+})
 
 describe('the dashboard asks the same question the button asks', () => {
   it('answers ENDPOINT_READING with an attempt, not with a refusal', async () => {

@@ -38,6 +38,10 @@ import {
   type Account,
   type ProviderId,
   type UsageResult,
+  READING_MINUTES,
+  READING_ROWS,
+  rowsOf,
+  trendOf,
 } from '@dsh-multipool/core'
 import {
   AMD_KEY_REF_NAME,
@@ -407,6 +411,16 @@ export function apply(
           facts,
           () => readSeamNow(seam, facts, onKeyStatus),
         ),
+      // The table half is capped to the same hour the curve covers, so the two cannot disagree
+      // about how far back this page is talking. Nothing here reads the clock for itself: nowMs
+      // is the one the facts were built with, and trendOf() floors it.
+      readDashboard: () => {
+        const events = facts.events ?? []
+        return {
+          trend: trendOf(events, nowMs(), READING_MINUTES),
+          rows: rowsOf(events, READING_ROWS),
+        }
+      },
     }
     const source: ChannelSource = channelSourceFrom(facts, nowMs, hooks)
     const budget: IconBudget = RAIL_BUDGET
@@ -470,6 +484,7 @@ export { AMD_KEY_REFS, KNOWN_LAYERS, describeFailure, describeKey, forgetAmdKey,
 export {
   CHANNEL,
   ENDPOINT_COMMAND,
+  ENDPOINT_DASHBOARD,
   ENDPOINT_READING,
   ENDPOINT_SNAPSHOT,
   ENDPOINT_TEST,

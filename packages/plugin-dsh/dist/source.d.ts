@@ -16,7 +16,7 @@
  *    the numbers off in that case, and this file must not manufacture the empty map that would
  *    smuggle a zero back in under another name.
  */
-import type { Account, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
+import type { Account, DashboardReading, MetricsEvent, ProviderId, UsageResult } from '@dsh-multipool/core';
 import type { ChannelSource } from './channel.js';
 import type { UsageAttempt } from './usage.js';
 /** The two hooks apply() supplies once ctx.inject has resolved the services they need. */
@@ -32,6 +32,15 @@ export interface SourceHooks {
      * it can only exist while a set of hooks is armed, which is why it lives on SourceHooks.
      */
     readonly readUsage?: (providerId: ProviderId) => Promise<UsageAttempt>;
+    /**
+     * The dashboard's own fold of the events store: one hour of minutes, plus the newest rows.
+     *
+     * Separate from readUsage() because it is a different kind of answer: readUsage() asks the
+     * upstream or says why it could not, while this one can only ever report what was already
+     * recorded. A page that drew them from one call would have no way to say "the last hour is
+     * empty" without also implying the upstream agreed.
+     */
+    readonly readDashboard?: () => DashboardReading;
 }
 /** What a read-only source may answer, including "I have not looked yet". */
 export interface SourceFacts {

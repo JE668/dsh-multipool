@@ -80,6 +80,15 @@ export const ENDPOINT_TEST = 'test';
  */
 export const ENDPOINT_READING = 'reading';
 /**
+ * The dashboard's curve and table, in one answer (T-3-b).
+ *
+ * One endpoint rather than two because the two halves are one tick of one poll: split across two
+ * names, a page could draw a curve at 10:31:02 and a table at 10:31:05 without either saying so, and
+ * a reader comparing them would be comparing two moments while believing they saw one. The cost is
+ * that a host must produce both or neither -- which it can, since both come from the same window.
+ */
+export const ENDPOINT_DASHBOARD = 'dashboard';
+/**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
  */
@@ -251,6 +260,11 @@ export function answerOf(handle, source) {
                 : undefined;
             const providerId = typeof asked === 'string' && asked !== '' ? asked : 'amd';
             return { ok: true, value: await source.testUsage(providerId) };
+        }
+        if (endpoint === ENDPOINT_DASHBOARD && source !== undefined && source.readDashboard !== undefined) {
+            // Both halves come out of one call, so they are one moment. The page may draw them slowly,
+            // but it cannot be handed a curve from before the table it is comparing it with.
+            return { ok: true, value: source.readDashboard() };
         }
         if (endpoint === ENDPOINT_READING && source !== undefined && source.readUsage !== undefined) {
             const asked = payload !== null && typeof payload === 'object'

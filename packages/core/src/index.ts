@@ -194,6 +194,22 @@ export {
   type SnapshotInput,
 } from './snapshot.js'
 export {
+  READING_MINUTES,
+  READING_ROWS,
+  type DashboardReading,
+} from './reading.js'
+export {
+  COUNTERS_REF,
+  MINUTE_MS,
+  trendOf,
+  type TrendPoint,
+} from './amd-trend.js'
+export {
+  rowsOf,
+  sortRows,
+  type DetailRow,
+} from './amd-table.js'
+export {
   AMD_BOUNDS,
   AMD_REJECTED_HOST_FRAGMENT,
   AMD_REJECTED_KEY_PREFIX,

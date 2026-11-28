@@ -19,5 +19,8 @@ export { PROXY_ROUTES, PROXY_HEADER_PREFIX, RATE_HEADER_PREFIX, SATURATED_CODE, 
 export { RETENTION_MS, createMetricsStore, rollupOf, shanghaiDayKey, } from './metrics.js';
 export { PER_MILLION, fallbacks, perMillion, pointsFor, } from './pricing.js';
 export { ALL_PROVIDERS, PROVIDER_ORDER, buildSnapshot, emptySnapshot, providerSnapshotOf, serializeSnapshot, sourcedNumberFromWire, toClientAccount, } from './snapshot.js';
+export { READING_MINUTES, READING_ROWS, } from './reading.js';
+export { COUNTERS_REF, MINUTE_MS, trendOf, } from './amd-trend.js';
+export { rowsOf, sortRows, } from './amd-table.js';
 export { AMD_BOUNDS, AMD_REJECTED_HOST_FRAGMENT, AMD_REJECTED_KEY_PREFIX, PROVIDER_BASE_URLS, baseUrlIsReadOnly, validateAmdKey, validateConcurrency, validateRpm, } from './amd-settings.js';
 //# sourceMappingURL=index.js.map

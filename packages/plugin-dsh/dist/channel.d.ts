@@ -39,7 +39,7 @@
  * KeyReading and not the KeyStatus it was built from. A test that shares the same process cannot
  * notice the difference, so the shape is narrow on purpose.
  */
-import { type Account, type MetricsEvent, type ProviderId, type Snapshot, type UsageResult } from '@dsh-multipool/core';
+import { type Account, type DashboardReading, type MetricsEvent, type ProviderId, type Snapshot, type UsageResult } from '@dsh-multipool/core';
 import { type IconView } from '@dsh-multipool/plugin-client';
 import type { UsageAttempt } from './usage.js';
 /**
@@ -87,6 +87,15 @@ export declare const ENDPOINT_TEST = "test";
  * that happened to notice it.
  */
 export declare const ENDPOINT_READING = "reading";
+/**
+ * The dashboard's curve and table, in one answer (T-3-b).
+ *
+ * One endpoint rather than two because the two halves are one tick of one poll: split across two
+ * names, a page could draw a curve at 10:31:02 and a table at 10:31:05 without either saying so, and
+ * a reader comparing them would be comparing two moments while believing they saw one. The cost is
+ * that a host must produce both or neither -- which it can, since both come from the same window.
+ */
+export declare const ENDPOINT_DASHBOARD = "dashboard";
 /**
  * Field carrying which provider the test is about. Absent means the one the icon prints numbers for,
  * which today is the only provider with a usage endpoint.
@@ -170,6 +179,16 @@ export interface ChannelSource {
      * always has the last number it saw to draw. No new request, no new cost -- usage.ts decides that.
      */
     readonly readUsage?: (providerId: ProviderId) => Promise<UsageAttempt>;
+    /**
+     * The dashboard's fold of the same events: an hour of minutes, plus the newest rows of them.
+     *
+     * Optional and separate from `events()` on purpose. `events()` is the raw window a snapshot counts;
+     * this is the same window already bucketed and capped, because the page polls it every few seconds
+     * and shipping the raw list would make each poll's size depend on how busy the account was. A host
+     * with no metrics store simply has no member here, and the page draws its "nothing recorded yet"
+     * state rather than a flat line at zero -- the two are different claims (docs/07 U-08).
+     */
+    readonly readDashboard?: () => DashboardReading;
 }
 /** The account-level budget the icon prints, already computed by whatever owns the formula. */
 export interface IconBudget {
