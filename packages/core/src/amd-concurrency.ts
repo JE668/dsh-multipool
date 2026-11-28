@@ -37,7 +37,7 @@ function emptyBuckets(): QueueHeatBucket {
   return { '0-1s': 0, '1-5s': 0, '5-30s': 0, '30s+': 0 }
 }
 
-function bucketOf(queueWaitMs: number | undefined): keyof QueueHeatBucket | null {
+function bucketOf(queueWaitMs: number | null | undefined): keyof QueueHeatBucket | null {
   if (queueWaitMs === undefined || queueWaitMs === null || !isFinite(queueWaitMs) || queueWaitMs < 0) return null
   if (queueWaitMs <= 1_000) return '0-1s'
   if (queueWaitMs <= 5_000) return '1-5s'
@@ -67,7 +67,8 @@ export function concurrencyOf(
   }
   const out: MinuteConcurrency[] = []
   for (let at = 0; at < minutes; at += 1) {
-    out.push({ atMs: firstStart + at * MINUTE_MS, maxConcurrency: seen[at] ? max[at] ?? null : null })
+    const m = max[at]
+    out.push({ atMs: firstStart + at * MINUTE_MS, maxConcurrency: seen[at] ? (m ?? null) : null })
   }
   return out
 }

@@ -33,12 +33,12 @@ export interface DetailRow {
   readonly latencyMs: number
   /** 1-based, as the scheduler counts attempts. */
   readonly attempt: number
-  readonly concurrencyAtSend: number
+  readonly concurrencyAtSend: number | null | undefined
   /** Queue wait, or null when the request never waited -- an absence, not a fast zero. */
   readonly queueWaitMs: number | null
 }
 
-function countOrNull(value: number | undefined): number | null {
+function countOrNull(value: number | null | undefined): number | null {
   if (value === undefined) return null
   if (!Number.isFinite(value)) return null
   return value

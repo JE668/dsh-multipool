@@ -44,7 +44,8 @@ export function concurrencyOf(events, nowMs, minutes) {
     }
     const out = [];
     for (let at = 0; at < minutes; at += 1) {
-        out.push({ atMs: firstStart + at * MINUTE_MS, maxConcurrency: seen[at] ? max[at] ?? null : null });
+        const m = max[at];
+        out.push({ atMs: firstStart + at * MINUTE_MS, maxConcurrency: seen[at] ? (m ?? null) : null });
     }
     return out;
 }

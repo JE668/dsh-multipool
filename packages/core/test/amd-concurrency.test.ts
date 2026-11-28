@@ -34,8 +34,8 @@ describe('concurrencyOf', () => {
     expect(points.length).toBe(3)
     expect(points.every((p) => p.maxConcurrency === null)).toBe(true)
     const base = Math.floor(NOW / 60_000) * 60_000
-    expect(points[0].atMs).toBe(base - 120_000)
-    expect(points[2].atMs).toBe(base)
+    expect(points[0]!.atMs).toBe(base - 120_000)
+    expect(points[2]!.atMs).toBe(base)
   })
 
   it('records max concurrency per minute', () => {
@@ -50,21 +50,21 @@ describe('concurrencyOf', () => {
       1,
     )
     expect(points.length).toBe(1)
-    expect(points[0].maxConcurrency).toBe(5)
+    expect(points[0]!.maxConcurrency).toBe(5)
   })
 
   it('null concurrency does not mark minute as seen', () => {
     const base = Math.floor(NOW / 60_000) * 60_000
     const points = concurrencyOf([mkEvent(base + 1000, { concurrencyAtSend: null })], NOW, 1)
-    expect(points[0].maxConcurrency).toBe(null)
+    expect(points[0]!.maxConcurrency).toBe(null)
   })
 
   it('window is [firstStart, lastStart + MINUTE_MS)', () => {
     const base = Math.floor(NOW / 60_000) * 60_000
     const before = concurrencyOf([mkEvent(base - 1, { concurrencyAtSend: 9 })], NOW, 1)
-    expect(before[0].maxConcurrency).toBe(null)
+    expect(before[0]!.maxConcurrency).toBe(null)
     const inside = concurrencyOf([mkEvent(base, { concurrencyAtSend: 9 })], NOW, 1)
-    expect(inside[0].maxConcurrency).toBe(9)
+    expect(inside[0]!.maxConcurrency).toBe(9)
   })
 })
 
@@ -95,10 +95,10 @@ describe('heatOf', () => {
       NOW,
       1,
     )
-    expect(points[0].buckets['0-1s']).toBe(1)
-    expect(points[0].buckets['1-5s']).toBe(1)
-    expect(points[0].buckets['5-30s']).toBe(1)
-    expect(points[0].buckets['30s+']).toBe(1)
+    expect(points[0]!.buckets['0-1s']).toBe(1)
+    expect(points[0]!.buckets['1-5s']).toBe(1)
+    expect(points[0]!.buckets['5-30s']).toBe(1)
+    expect(points[0]!.buckets['30s+']).toBe(1)
   })
 
   it('null / undefined / negative queueWaitMs is ignored', () => {
@@ -112,8 +112,8 @@ describe('heatOf', () => {
       NOW,
       1,
     )
-    expect(points[0].buckets['0-1s']).toBe(0)
-    expect(points[0].buckets['30s+']).toBe(0)
+    expect(points[0]!.buckets['0-1s']).toBe(0)
+    expect(points[0]!.buckets['30s+']).toBe(0)
   })
 
   it('boundary: exactly 1s goes to 0-1s, exactly 5s goes to 1-5s, exactly 30s goes to 5-30s', () => {
@@ -127,14 +127,14 @@ describe('heatOf', () => {
       NOW,
       1,
     )
-    expect(points[0].buckets['0-1s']).toBe(1)
-    expect(points[0].buckets['1-5s']).toBe(1)
-    expect(points[0].buckets['5-30s']).toBe(1)
+    expect(points[0]!.buckets['0-1s']).toBe(1)
+    expect(points[0]!.buckets['1-5s']).toBe(1)
+    expect(points[0]!.buckets['5-30s']).toBe(1)
   })
 
   it('window excludes events before firstStart', () => {
     const base = Math.floor(NOW / 60_000) * 60_000
     const before = heatOf([mkEvent(base - 60_000 - 1, { queueWaitMs: 500 })], NOW, 1)
-    expect(before[0].buckets['0-1s']).toBe(0)
+    expect(before[0]!.buckets['0-1s']).toBe(0)
   })
 })

@@ -221,7 +221,7 @@ export interface MetricsEvent {
     reasoningTokens?: number;
     cacheReadTokens?: number;
     rateKind?: RateKind;
-    queueWaitMs?: number;
-    concurrencyAtSend: number;
+    queueWaitMs?: number | null;
+    concurrencyAtSend?: number | null;
 }
 //# sourceMappingURL=contract.d.ts.map
