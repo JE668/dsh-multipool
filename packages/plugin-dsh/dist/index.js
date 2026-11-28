@@ -270,7 +270,7 @@ export function apply(ctx, options = {}) {
                 effect: ctx.effect,
                 inject: ctx.inject,
                 llm: ctx.llm,
-            }, { facts, nowMs });
+            }, { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted });
             interceptDisposer = intercept.disposer;
             interceptHooks = intercept.hooks;
         }

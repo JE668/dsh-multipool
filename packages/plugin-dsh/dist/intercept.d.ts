@@ -20,6 +20,13 @@ export interface InterceptOptions {
     readonly facts?: Parameters<typeof import('./source.js').channelSourceFrom>[0];
     readonly nowMs?: () => number;
     readonly baseUrl?: string;
+    /**
+     * Step 2 gate: when true, a `tryAcquire` that returns `ok: false` causes the request
+     * to be rejected outright (429-like response, no upstream call). Defaults to false --
+     * step 1 is read-only: the gate is consulted and its budget observed, but nothing is
+     * refused, nothing is delayed, nothing changes a routing decision.
+     */
+    readonly rejectOnBudgetExhausted?: boolean;
 }
 export interface InterceptHandle {
     readonly disposer: () => void;

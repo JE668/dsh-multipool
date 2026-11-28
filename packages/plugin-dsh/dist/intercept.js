@@ -54,6 +54,30 @@ export function createIntercept(ctx, options = {}) {
         if (options.provider === 'amd') {
             // Gate admission (record the budget but don't wait yet - step 1 is read-only)
             const reservation = gate.tryAcquire('chat');
+            // Step 2: reject before 429 when the opt-in switch is on.
+            // Default off: tryAcquire logs budget but does not block, nothing changes a routing decision.
+            if (!reservation.ok && options.rejectOnBudgetExhausted) {
+                const waitMs = reservation.waitMs ?? 0;
+                const errorBody = JSON.stringify({
+                    error: {
+                        message: 'AMD account RPM budget exhausted for this minute',
+                        type: 'rate_limit',
+                        retry_after_ms: waitMs,
+                    },
+                });
+                const rejectRes = new Response(errorBody, {
+                    status: 429,
+                    statusText: 'Too Many Requests',
+                    headers: {
+                        'content-type': 'application/json',
+                        'retry-after': String(Math.ceil(waitMs / 1000)),
+                    },
+                });
+                for await (const chunk of [rejectRes]) {
+                    yield chunk;
+                }
+                return;
+            }
             // Build the forward URL and headers using the seam's key
             const keyFrame = await getKeyFromSeam(seam);
             const forwardedHeaders = await buildForwardHeaders(options, keyFrame);

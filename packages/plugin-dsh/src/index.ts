@@ -110,6 +110,13 @@ export interface HostOptions {
    */
   readonly acceptsWrites?: boolean
   /**
+   * Step 2 gate: when true, a `tryAcquire` that returns `ok: false` causes the request
+   * to be rejected outright (429-like response, no upstream call). Defaults to false --
+   * step 1 is read-only: the gate is consulted and its budget observed, but nothing is
+   * refused, nothing is delayed, nothing changes a routing decision.
+   */
+  readonly rejectOnBudgetExhausted?: boolean
+  /**
    * The web server to claim CHANNEL on. Defaults to the `webServer` service, which is where DSH puts
    * it and where the page's dsh-app://app fetch already reaches.
    *
@@ -392,7 +399,7 @@ export function apply(
           inject: ctx.inject,
           llm: ctx.llm,
         },
-        { facts, nowMs },
+        { facts, nowMs, rejectOnBudgetExhausted: options.rejectOnBudgetExhausted },
       )
       interceptDisposer = intercept.disposer
       interceptHooks = intercept.hooks
