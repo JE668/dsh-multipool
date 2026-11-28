@@ -259,28 +259,37 @@ export function apply(ctx, options = {}) {
         // zero -- and only a read that came back may change it, because `reading()` is derived from
         // `accounts` being undefined here and nowhere else.
         const facts = { ...(options.facts ?? NOTHING_READ) };
+        // The intercept layer owns the gate, the metrics store, and the LLM stream hook.
+        // It reads/writes the same `facts` object apply() uses, so the channel source and the
+        // request recorder see one consistent view.
+        let interceptDisposer;
+        let interceptHooks;
+        if (ctx.llm !== undefined) {
+            // createIntercept is synchronous: no top-level awaits, everything async is lazy.
+            const intercept = createIntercept({
+                effect: ctx.effect,
+                inject: ctx.inject,
+                llm: ctx.llm,
+            }, { facts, nowMs });
+            interceptDisposer = intercept.disposer;
+            interceptHooks = intercept.hooks;
+        }
         // Both hooks read the current `seam` and `lastAttemptMs` when they are called, so they see a
         // service injected after this line. Whether they are *offered* is decided per request in
         // channel.ts: an install with no provider has no `readFromSeam` key at all, which is that
         // module's refusal, rather than a wrapper that is present and throws.
         let seam;
         let lastAttemptMs;
-        const hooks = {
+        // Fallback hooks when there is no LLM context to intercept: they still answer real data
+        // through the seam, they just don't record new requests from the stream.
+        const hooks = interceptHooks ?? {
             readFromSeam: () => readSeamNow(seam, facts, onKeyStatus),
             testUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
                 lastAttemptMs = stamp;
             }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
-            // The dashboard's timer asks the same question a press asks, through the same function, so
-            // both are floored by the one lastAttemptMs. What differs is who is waiting: a page that polls
-            // gets a carried reading inside the minute (usage.ts returns `previous` with carried: true)
-            // rather than a refusal, which is why this is not a "you may not" -- there is nothing here to
-            // gate that the upstream floor does not already gate.
             readUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => {
                 lastAttemptMs = stamp;
             }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
-            // The table half is capped to the same hour the curve covers, so the two cannot disagree
-            // about how far back this page is talking. Nothing here reads the clock for itself: nowMs
-            // is the one the facts were built with, and trendOf() floors it.
             readDashboard: () => {
                 const events = facts.events ?? [];
                 return {
@@ -326,6 +335,8 @@ export function apply(ctx, options = {}) {
             if (options.acceptsWrites !== false)
                 channel.offer(writesFor(seam));
         }));
+        if (interceptDisposer !== undefined)
+            drops.push(interceptDisposer);
         return () => {
             for (const drop of drops.reverse())
                 drop();

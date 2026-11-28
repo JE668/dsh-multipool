@@ -133,6 +133,14 @@ export declare function reportKeyInto(context: KeyContext, facts: MutableFacts, 
 export declare function apply(ctx: {
     effect(callback: () => () => void): () => void;
     inject?: (names: string[], callback: (child: InjectedServices) => void) => () => void;
+    llm?: {
+        stream: (options: {
+            provider: string;
+            model: string;
+            messages: unknown[];
+            signal?: AbortSignal;
+        }) => AsyncIterable<unknown>;
+    };
 }, options?: HostOptions): () => void;
 export { NOTHING_READ, channelSourceFrom, type SourceFacts } from './source.js';
 export { AMD_KEY_REF, CREDENTIALS_SERVICE, KEY_UPDATED_EVENT, clearKeyStatus, readKeyStatus, watchKeyStatus, writeKeyStatus, type KeyContext, type KeyStatus, type KeyWriteOutcome, } from './credentials.js';
