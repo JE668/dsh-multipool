@@ -27,6 +27,7 @@ export function rowsOf(events, limit) {
     return capped.map(event => ({
         atMs: event.ts,
         requestId: event.requestId,
+        providerId: event.providerId,
         accountAlias: event.accountAlias,
         // Re-masked on the way out rather than trusted: the store is in this process and is supposed to
         // hold masked ids already, but a row is a wire shape, and a wire shape that carries whatever it

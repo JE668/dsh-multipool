@@ -13,7 +13,7 @@
  * - It does NOT own credentials injection, key-status watching, or channel/serveOn. apply()
  *   does those; this layer only reads the shared `facts` object and hooks into llm.stream.
  */
-import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, AccountGate, computeBudget, createSystemClock, createMetricsStore, READING_MINUTES, READING_ROWS, rowsOf, trendOf, } from './vendor/core/index.js';
+import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, AccountGate, computeBudget, createSystemClock, createMetricsStore, READING_MINUTES, READING_ROWS, rowsOf, trendOf, concurrencyOf, heatOf, } from './vendor/core/index.js';
 import { readAmdUsage, withProviderUsage, diagnoseAmd } from './usage.js';
 import { AMD_KEY_REF_NAME } from './channel.js';
 export function createIntercept(ctx, options = {}) {
@@ -40,9 +40,12 @@ export function createIntercept(ctx, options = {}) {
         readUsage: (providerId) => askUsage(providerId, seam, nowMs, () => lastAttemptMs, stamp => { lastAttemptMs = stamp; }, facts, () => readSeamNow(seam, facts, undefined)),
         readDashboard: () => {
             const events = facts.events ?? [];
+            const now = nowMs();
             return {
-                trend: trendOf(events, nowMs(), READING_MINUTES),
+                trend: trendOf(events, now, READING_MINUTES),
                 rows: rowsOf(events, READING_ROWS),
+                concurrency: concurrencyOf(events, now, READING_MINUTES),
+                heat: heatOf(events, now, READING_MINUTES),
             };
         },
         diagnose: (providerId) => diagnoseAmd({

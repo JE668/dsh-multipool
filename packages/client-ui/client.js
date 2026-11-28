@@ -696,6 +696,40 @@ window.__ModuleLoader__.load({
       })
     }
 
+    /**
+     * Provider x Model flow for the rows the table holds -- newest-first, this-session-only rows,
+     * so it answers "since this process started, which models did requests flow to". No cost
+     * figures anywhere (docs/06 T-3-d).
+     */
+    function sankeyLinks(rows) {
+      var map = {}
+      var order = []
+      for (var index = 0; index < rows.length; index += 1) {
+        var row = rows[index]
+        var key = (row.providerId === undefined ? '—' : row.providerId) + '\u0000' + row.modelId
+        if (map[key] === undefined) {
+          map[key] = 0
+          order.push(key)
+        }
+        map[key] += 1
+      }
+      var links = order.map(function (key) {
+        var parts = key.split('\u0000')
+        return { provider: parts[0], model: parts[1], count: map[key] }
+      })
+      links.sort(function (left, right) {
+        return right.count - left.count
+      })
+      if (links.length > 6) {
+        var kept = links.slice(0, 6)
+        var other = 0
+        for (var index = 6; index < links.length; index += 1) other += links[index].count
+        kept.push({ provider: '—', model: '\u5176\u4ed6', count: other })
+        links = kept
+      }
+      return links
+    }
+
     function plotNoteOf(answered, measured) {
       if (!answered) return '\u5c1a\u672a\u542c\u5230\u5bbf\u4e3b'
       if (measured === 0) return '\u8fd8\u6ca1\u6709\u4efb\u4f55\u8bb0\u5f55'
@@ -1545,6 +1579,90 @@ window.__ModuleLoader__.load({
             }),
           )
 
+      var sankeyFlow = folded === null ? [] : sankeyLinks(hour.rows)
+      var maxSankey = 0
+      for (var index = 0; index < sankeyFlow.length; index += 1) {
+        if (sankeyFlow[index].count > maxSankey) maxSankey = sankeyFlow[index].count
+      }
+      var sankey = sankeyFlow.length === 0
+        ? React.createElement(
+            'div',
+            { key: 'sankey', style: styles.note, 'data-multipool-sankey': 'none' },
+            plotNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+          )
+        : (function () {
+            var providerX = 44
+            var providerY = 48
+            var modelX = 320 - 26
+            var count = sankeyFlow.length
+            var items = []
+            for (var index = 0; index < count; index += 1) {
+              var link = sankeyFlow[index]
+              var modelY = count === 1 ? providerY : PLOT_PAD_Y + (index / (count - 1)) * (PLOT_HEIGHT - PLOT_PAD_Y * 2)
+              var width = Math.max(1, Math.min(8, 1 + (link.count / maxSankey) * 7))
+              var mx = modelX - 10
+              var px = providerX + 10
+              items.push(
+                React.createElement('path', {
+                  key: 'sankey-' + String(index),
+                  d:
+                    'M ' +
+                    plotUnits(px) +
+                    ' ' +
+                    plotUnits(providerY) +
+                    ' Q ' +
+                    plotUnits((px + mx) / 2) +
+                    ' ' +
+                    plotUnits((providerY + modelY) / 2) +
+                    ' ' +
+                    plotUnits(mx) +
+                    ' ' +
+                    plotUnits(modelY),
+                  stroke: stroke,
+                  strokeWidth: width,
+                  strokeOpacity: 0.6,
+                  fill: 'none',
+                }),
+              )
+              items.push(
+                React.createElement(
+                  'text',
+                  {
+                    key: 'sankey-label-' + String(index),
+                    x: 316,
+                    y: plotUnits(modelY + 3),
+                    style: { fontSize: 8, fill: 'var(--dsw-alias-label-tertiary)', textAnchor: 'end' },
+                  },
+                  link.model,
+                ),
+              )
+            }
+            items.push(
+              React.createElement(
+                'text',
+                {
+                  key: 'sankey-provider',
+                  x: 30,
+                  y: plotUnits(providerY + 3),
+                  style: { fontSize: 8, fill: 'var(--dsw-alias-label-tertiary)' },
+                },
+                sankeyFlow[0].provider,
+              ),
+            )
+            return React.createElement(
+              'svg',
+              {
+                key: 'sankey',
+                viewBox: '0 0 ' + String(PLOT_WIDTH) + ' ' + String(PLOT_HEIGHT),
+                width: '100%',
+                height: String(PLOT_HEIGHT),
+                style: { display: 'block', overflow: 'visible' },
+                'data-multipool-sankey': 'flow',
+              },
+              items,
+            )
+          })()
+
       // The rows, newest first, exactly as rowsOf() ordered them -- the drawer does not sort, because
       // a sort here would be a second opinion about what "unknown" means and the two opinions would
       // eventually disagree (docs/07 U-07).
@@ -1584,6 +1702,7 @@ window.__ModuleLoader__.load({
         rpmCurve,
         concCurve,
         heatChart,
+        sankey,
         React.createElement('div', { key: 'table-note', style: styles.note, 'data-multipool-table-note': 'true' },
           TABLE_NOTE),
         table,

@@ -29,7 +29,7 @@
  * - The clock is the injected one a caller passes in. This file never reads Date.now, so the
  *   icon's timestamps can be replayed exactly in a test that controls time (07 Z-03).
  */
-import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClock, READING_MINUTES, READING_ROWS, rowsOf, trendOf, } from './vendor/core/index.js';
+import { DEFAULT_AMD_POLICY, USAGE_POLL_FLOOR_MS, computeBudget, createSystemClock, READING_MINUTES, READING_ROWS, rowsOf, trendOf, concurrencyOf, heatOf, } from './vendor/core/index.js';
 import { AMD_KEY_REF_NAME, openChannel, serveOn, CHANNEL, COMMAND_NO_WRITES, } from './channel.js';
 import { CREDENTIALS_SERVICE, readKeyStatus, clearKeyStatus, watchKeyStatus, writeKeyStatus, } from './credentials.js';
 import { NOTHING_READ, channelSourceFrom } from './source.js';
@@ -306,9 +306,12 @@ export function apply(ctx, options = {}) {
             }, facts, () => readSeamNow(seam, facts, onKeyStatus)),
             readDashboard: () => {
                 const events = facts.events ?? [];
+                const now = nowMs();
                 return {
-                    trend: trendOf(events, nowMs(), READING_MINUTES),
+                    trend: trendOf(events, now, READING_MINUTES),
                     rows: rowsOf(events, READING_ROWS),
+                    concurrency: concurrencyOf(events, now, READING_MINUTES),
+                    heat: heatOf(events, now, READING_MINUTES),
                 };
             },
             diagnose: (providerId) => diagnoseAmd({
