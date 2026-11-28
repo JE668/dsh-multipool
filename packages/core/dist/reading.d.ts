@@ -9,6 +9,7 @@
  */
 import type { DetailRow } from './amd-table.js';
 import type { TrendPoint } from './amd-trend.js';
+import type { MinuteConcurrency, MinuteHeat } from './amd-concurrency.js';
 /** How many minutes the curve covers: an hour, the finest window the counters can honestly fill. */
 export declare const READING_MINUTES = 60;
 /** How many rows the table shows. A screenful and a half, so the table has something to scroll. */
@@ -30,5 +31,14 @@ export interface DashboardReading {
      * for the whole hour. A page must not read "40 points and 3 rows" as a broken measurement.
      */
     readonly rows: readonly DetailRow[];
+    /**
+     * Per-minute worst concurrency seen at send time, oldest minute first.
+     * null where that minute recorded nothing.
+     */
+    readonly concurrency: readonly MinuteConcurrency[];
+    /**
+     * Per-minute queue-wait heat, oldest minute first, logarithmic buckets.
+     */
+    readonly heat: readonly MinuteHeat[];
 }
 //# sourceMappingURL=reading.d.ts.map

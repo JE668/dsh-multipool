@@ -254,6 +254,12 @@ export interface ChannelWrites {
      * keeps the toggle invisible where there is nothing to gate.
      */
     readonly rejectOnBudgetExhausted?: (value: boolean) => Promise<CommandOutcome>;
+    /**
+     * Step 3C gate toggle: the page's settings section sets this, and the panel reads it
+     * to decide whether to open as a shell immersion overlay. Absent means the toggle
+     * is invisible on installs without a credential service.
+     */
+    readonly dashboardMode?: (value: boolean) => Promise<CommandOutcome>;
 }
 export interface PublishedView {
     readonly snapshot: Snapshot;

@@ -121,6 +121,11 @@ export interface HostOptions {
    */
   readonly rejectOnBudgetExhausted?: boolean
   /**
+   * Step 3C gate: when true, the panel opens as a shell immersion overlay instead of
+   * drawer-only. Defaults to false. Read by client.js via facts.dashboardMode.
+   */
+  readonly dashboardMode?: boolean
+  /**
    * The web server to claim CHANNEL on. Defaults to the `webServer` service, which is where DSH puts
    * it and where the page's dsh-app://app fetch already reaches.
    *
@@ -517,6 +522,13 @@ export function apply(
           // a second round-trip.
           rejectOnBudgetExhausted: (value: boolean) => {
             facts.rejectOnBudgetExhausted = value
+            return Promise.resolve({ ok: true, value: true })
+          },
+          // The settings section flips this toggle; the panel reads it to decide whether
+          // to open the shell immersion overlay instead of drawer-only. Writing into
+          // shared `facts` keeps both halves on the same value.
+          dashboardMode: (value: boolean) => {
+            facts.dashboardMode = value
             return Promise.resolve({ ok: true, value: true })
           },
         })

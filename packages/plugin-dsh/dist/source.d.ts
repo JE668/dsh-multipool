@@ -97,6 +97,11 @@ export interface SourceFacts {
      * on every AMD request. Absent means "off" (read-only).
      */
     readonly rejectOnBudgetExhausted?: boolean;
+    /**
+     * Step 3C gate toggle: the settings section flips this, and the panel reads it to decide
+     * whether to open the shell immersion overlay instead of the drawer-only panel. Absent means off.
+     */
+    readonly dashboardMode?: boolean;
 }
 /** A source that has nothing to report yet: every member is absent, none is zero. */
 export declare const NOTHING_READ: SourceFacts;

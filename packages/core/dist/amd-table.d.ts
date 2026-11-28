@@ -12,11 +12,12 @@
  *
  * Nothing here reads a clock or a store. Rows in, rows out.
  */
-import type { MetricsEvent } from './contract.js';
+import type { MetricsEvent, ProviderId } from './contract.js';
 /** One line of the table under 07's shape, with nothing invented to fill a gap. */
 export interface DetailRow {
     readonly atMs: number;
     readonly requestId: string;
+    readonly providerId: ProviderId;
     readonly accountAlias: string;
     /** The masked key: the only form of a key that may leave the store (docs/07 U-05). */
     readonly keyIdMasked: string;

@@ -229,6 +229,11 @@ window.__ModuleLoader__.load({
       rejectLabel: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42',
       rejectOff: '\u8df3\u8fc7\u4e0d\u8d85\u989d\u7684\u8bf7\u6c42\uff08\u53ea\u8bb0\u8f93\u7387\u901a\u3002\uff09',
       rejectOn: '\u62a5\u589e\u6536\u957f\u7684\u8bf7\u6c42\uff08\u8d85\u989d\u65f6\u76f4\u63a5\u56de 429\u3002\uff09',
+      // Immersion toggle: opens the panel as a shell overlay instead of only inside the drawer.
+      // Default off: nothing mounts anywhere the reader has not asked for.
+      dashboardLabel: '\u6c60\u6f0f\u770b\u677f',
+      dashboardOff: '\u6c60\u6f0f\u770b\u677f\uff08\u9ed8\u8ba4\u4e0d\u63a2\u8f6c\uff0c\u53ea\u5728\u628f\u5f15\u7bb1\u91cc\u770b\uff09',
+      dashboardOn: '\u6c60\u6f0f\u770b\u677f\uff08\u5df2\u63a2\u8f6c\u70b9\uff09',
     }
 
     /**
@@ -919,6 +924,7 @@ window.__ModuleLoader__.load({
       const state = key.state
       const busy = state.busy !== null
       const rejectOn = key.rejectOnBudgetExhausted === true
+      const dashboardOn = key.dashboardMode === true
       const diagnoseReady = state.diagnose.atMs === null || Date.now() - state.diagnose.atMs >= 60000
 
       // Ask once on arrival: the section owes the reader its own answer before the reader clicks
@@ -1014,6 +1020,31 @@ window.__ModuleLoader__.load({
         ),
         React.createElement(
           'div',
+          { key: 'toggle2', style: settingsStyles.toggle },
+          React.createElement('span', null, SETTINGS.dashboardLabel),
+          React.createElement(
+            'button',
+            {
+              key: 'toggle-button',
+              type: 'button',
+              disabled: busy,
+              onClick: function () { void key.setDashboardMode(!dashboardOn) },
+              style: {
+                ...settingsStyles.toggleBox,
+                background: dashboardOn ? 'var(--dsw-alias-bg-success)' : 'var(--dsw-alias-bg-base)',
+              },
+            },
+            React.createElement('div', {
+              style: {
+                ...settingsStyles.toggleKnob,
+                marginLeft: dashboardOn ? 10 : 2,
+              },
+            }),
+          ),
+          React.createElement('span', null, dashboardOn ? SETTINGS.dashboardOn : SETTINGS.dashboardOff),
+        ),
+        React.createElement(
+          'div',
           { key: 'said', style: settingsStyles.note, 'data-multipool-said': 'true' },
           state.said === null || state.said === undefined ? '' : String(state.said),
         ),
@@ -1021,6 +1052,11 @@ window.__ModuleLoader__.load({
           'div',
           { key: 'diagnose', style: settingsStyles.note, 'data-multipool-diagnose': 'true' },
           state.diagnose.said === null ? '' : String(state.diagnose.said) + '，上游限额 ' + (state.diagnose.limit === null ? '\u2014' : String(state.diagnose.limit)) + ' / 剩余 ' + (state.diagnose.remaining === null ? '\u2014' : String(state.diagnose.remaining)) + '；本地假设 Key \u00d7 30 = 30',
+        ),
+        React.createElement(
+          'div',
+          { key: 'dashboard', style: settingsStyles.note, 'data-multipool-dashboard': 'true' },
+          dashboardOn ? SETTINGS.dashboardOn : SETTINGS.dashboardOff,
         ),
         React.createElement('div', { key: 'care', style: settingsStyles.note }, SETTINGS.note),
       )
@@ -1071,6 +1107,11 @@ window.__ModuleLoader__.load({
       })
       const rejectOnBudgetExhausted = rejectPair[0]
       const setRejectOnBudgetExhausted = rejectPair[1]
+      const dashboardPair = React.useState(function () {
+        return false
+      })
+      const dashboardMode = dashboardPair[0]
+      const setDashboardMode = dashboardPair[1]
 
       // Every answer the store gives is shown as it gave it: the writer in key-store.ts already
       // wraps its own refusals in the store's words, and re-wording them here would put a
@@ -1184,6 +1225,17 @@ window.__ModuleLoader__.load({
         })
       }
 
+      const saveDashboard = function (value) {
+        setDashboardMode(value)
+        return commandOf({ name: 'dashboard-mode', value: value }).then(function (outcome) {
+          if (outcome.ok !== true) {
+            setDashboardMode(!value)
+            say(outcome.message === undefined || outcome.message === null ? outcome.reason : outcome.message, null)
+          }
+          return outcome
+        })
+      }
+
       return {
         state: state,
         draft: draft,
@@ -1195,6 +1247,8 @@ window.__ModuleLoader__.load({
         read: read,
         rejectOnBudgetExhausted: rejectOnBudgetExhausted,
         setRejectOnBudgetExhausted: saveReject,
+        dashboardMode: dashboardMode,
+        setDashboardMode: saveDashboard,
       }
     }
 

@@ -79,6 +79,11 @@ export interface HostOptions {
      */
     readonly rejectOnBudgetExhausted?: boolean;
     /**
+     * Step 3C gate: when true, the panel opens as a shell immersion overlay instead of
+     * drawer-only. Defaults to false. Read by client.js via facts.dashboardMode.
+     */
+    readonly dashboardMode?: boolean;
+    /**
      * The web server to claim CHANNEL on. Defaults to the `webServer` service, which is where DSH puts
      * it and where the page's dsh-app://app fetch already reaches.
      *

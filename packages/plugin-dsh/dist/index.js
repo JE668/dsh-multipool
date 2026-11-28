@@ -367,6 +367,13 @@ export function apply(ctx, options = {}) {
                         facts.rejectOnBudgetExhausted = value;
                         return Promise.resolve({ ok: true, value: true });
                     },
+                    // The settings section flips this toggle; the panel reads it to decide whether
+                    // to open the shell immersion overlay instead of drawer-only. Writing into
+                    // shared `facts` keeps both halves on the same value.
+                    dashboardMode: (value) => {
+                        facts.dashboardMode = value;
+                        return Promise.resolve({ ok: true, value: true });
+                    },
                 });
             }
         }));

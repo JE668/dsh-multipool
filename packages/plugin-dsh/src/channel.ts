@@ -284,6 +284,12 @@ export interface ChannelWrites {
    * keeps the toggle invisible where there is nothing to gate.
    */
   readonly rejectOnBudgetExhausted?: (value: boolean) => Promise<CommandOutcome>
+  /**
+   * Step 3C gate toggle: the page's settings section sets this, and the panel reads it
+   * to decide whether to open as a shell immersion overlay. Absent means the toggle
+   * is invisible on installs without a credential service.
+   */
+  readonly dashboardMode?: (value: boolean) => Promise<CommandOutcome>
 }
 
 export interface PublishedView {
@@ -385,7 +391,12 @@ const COMMAND_VALUE = 'value'
  * "unknown command" and start being "test is not a write": a right sentence in the wrong mouth,
  * from a table that should never have learned the word.
  */
-const KNOWN_COMMANDS: readonly string[] = ['save', 'forget', 'reject-on-budget-exhausted']
+const KNOWN_COMMANDS: readonly string[] = [
+  'save',
+  'forget',
+  'reject-on-budget-exhausted',
+  'dashboard-mode',
+]
 
 /**
  * Run one command, or say why it cannot run.
@@ -414,6 +425,11 @@ async function dispatch(
     const value = fields === undefined ? undefined : fields[COMMAND_VALUE]
     if (typeof value !== 'boolean') return { ok: false, reason: COMMAND_MALFORMED }
     return await writes.rejectOnBudgetExhausted?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES }
+  }
+  if (name === 'dashboard-mode') {
+    const value = fields === undefined ? undefined : fields[COMMAND_VALUE]
+    if (typeof value !== 'boolean') return { ok: false, reason: COMMAND_MALFORMED }
+    return await writes.dashboardMode?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES }
   }
   // The key text is passed through as the store will see it: this layer validates the name, not
   // the value, and key-store.ts is where docs/02 section 1.2 and 1.9 decide what a key may be.

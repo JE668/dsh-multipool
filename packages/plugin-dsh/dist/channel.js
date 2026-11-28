@@ -152,7 +152,12 @@ const COMMAND_VALUE = 'value';
  * "unknown command" and start being "test is not a write": a right sentence in the wrong mouth,
  * from a table that should never have learned the word.
  */
-const KNOWN_COMMANDS = ['save', 'forget', 'reject-on-budget-exhausted'];
+const KNOWN_COMMANDS = [
+    'save',
+    'forget',
+    'reject-on-budget-exhausted',
+    'dashboard-mode',
+];
 /**
  * Run one command, or say why it cannot run.
  *
@@ -180,6 +185,12 @@ async function dispatch(request, writes, isClosed) {
         if (typeof value !== 'boolean')
             return { ok: false, reason: COMMAND_MALFORMED };
         return await writes.rejectOnBudgetExhausted?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES };
+    }
+    if (name === 'dashboard-mode') {
+        const value = fields === undefined ? undefined : fields[COMMAND_VALUE];
+        if (typeof value !== 'boolean')
+            return { ok: false, reason: COMMAND_MALFORMED };
+        return await writes.dashboardMode?.(value) ?? { ok: false, reason: COMMAND_NO_WRITES };
     }
     // The key text is passed through as the store will see it: this layer validates the name, not
     // the value, and key-store.ts is where docs/02 section 1.2 and 1.9 decide what a key may be.
