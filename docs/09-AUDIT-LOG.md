@@ -245,7 +245,7 @@ T-2-b 要的是「左栏图标能显示池子状态」。这个「能」被五�
 | `ctx.inject(['connection'], …)` + `connection.rpc.handle` | 绿（假 ctx 给了 `connection`） | `connection` 只在 DSH 自己的 client bundle 里 provide，profile 装的插件拿不到 | 注入永不回调，图标画 `—`，host 其实健康 |
 | `window` 事件（现方案） | 绿 | 绿（`e66c31c` 起真机上桥挂上、页面派发成功） | 无鉴权，页内已有脚本可冒充 host；已在 docs/09 §6.1 与 channel.ts 头注释写明 |
 | 挂到 `globalThis` 上发声 | 绿（假 ctx 给了 `connection`） | `apply()` 抛 `where.addEventListener is not a function`，cordis 把 entry 整个摘掉，图标变黑、重开插件消失 | 已退回 `window` 事件（`225e244`） |
-| `ctx.inject(['credentials'], …)` 里的 `offer` | 绿 | 页面的写命令从不经它：`command` 端点拿的是 `serveOn` 交给路由的 `writes`，开关翻成 `true` 也不改写入行为 | 待收口（docs/06 T-2-f） |
+| `acceptsWrites` 默认 `false`，而人说“设置页照样能保存” | 绿 | `offer()` 全仓只有 `apply` 一处调用，`openChannel` 的实参里没有 `writes`，开关就是写入路径的唯一来源；那句“能保存”只是看见了 `已存在本机`，而那行字有 `resolve` 就够了——读得到 ≠ 写得进去 | 已改正文档，写路径仍未验（docs/06 T-2-f） |
 
 这五条记录下来的用处不是“看我们多曲折”，而是：**凡涉及 DSH 生命周期或跨半边界的假设，
 先去 `app.asar` 读实现再写**。前几次我都是照着参考包的形状抄的，形状抄对了，括号里的 API 不存在。
