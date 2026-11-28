@@ -931,7 +931,7 @@ window.__ModuleLoader__.load({
       const busy = state.busy !== null
       const rejectOn = key.rejectOnBudgetExhausted === true
       const dashboardOn = key.dashboardMode === true
-      const diagnoseReady = state.diagnose.atMs === null || Date.now() - state.diagnose.atMs >= 60000
+      const diagnoseReady = state.diagnose?.atMs === null || Date.now() - (state.diagnose?.atMs ?? 0) >= 60000
 
       // Ask once on arrival: the section owes the reader its own answer before the reader clicks
       // anything, and read() is the one projection this page needs (where the key lives), not the
@@ -1140,7 +1140,14 @@ window.__ModuleLoader__.load({
       // second author between the user and the only sentence that knows why the write failed.
       const say = function (sentence, busy) {
         setState(function (was) {
-          return { reading: was.reading, present: was.present, layer: was.layer, busy: busy, said: sentence }
+          return {
+            reading: was.reading,
+            present: was.present,
+            layer: was.layer,
+            busy: busy,
+            said: sentence,
+            diagnose: was.diagnose,
+          }
         })
       }
 
@@ -1152,12 +1159,10 @@ window.__ModuleLoader__.load({
             return {
               reading: word === undefined || word === 'unread' ? 'unread' : 'read',
               present: word === undefined || word === 'unread' ? false : counts.available > 0,
-              // Taken from the same answer that carried the count, never remembered from a
-              // previous one: a layer the reader saw once and kept would outlive a key they then
-              // deleted, and print "stored in your environment" over an empty field.
               layer: view === undefined || view === null ? undefined : view.layer,
               busy: was.busy,
               said: was.said,
+              diagnose: was.diagnose,
             }
           })
         })
