@@ -216,6 +216,10 @@ export {
   type MinuteHeat,
 } from './amd-concurrency.js'
 export {
+  exportDashboard,
+  exportEvents,
+} from './export.js'
+export {
   PLOT_HEIGHT,
   PLOT_WIDTH,
   trendFigureOf,
