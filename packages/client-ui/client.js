@@ -444,6 +444,28 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * The hour, folded here from the reading the host folded there.
+     *
+     * client.js cannot require the rest of the package -- the page's module table has one seed word
+     * -- so the drawer inline the parts that decide what gets painted, and painters that reach
+     * parity.test.ts keep the two copies saying one thing. Same door as ptsOf above: the host
+     * sends minutes, the drawer sends strokes, and a test can hold both ends without a host running.
+     */
+    function hourOf(hourItem) {
+      if (hourItem === undefined || hourItem === null) return null
+      var trend = hourItem.trend
+      if (trend === undefined || trend === null) return null
+      var measured = 0
+      for (var index = 0; index < trend.length; index += 1) {
+        var point = trend[index]
+        if (point !== undefined && point !== null && point.rate !== null && point.rate !== undefined) {
+          measured += 1
+        }
+      }
+      return { trend: trend, measured: measured }
+    }
+
     var COMMAND_FAILED = 'command failed'
     var LEVEL_TOKEN = {
       green: '--dsw-alias-state-success-primary',
@@ -496,12 +518,17 @@ window.__ModuleLoader__.load({
      */
     var VIEW_REFRESH_MS = 5000
 
-    function follow(keep) {
+    function follow(keep, keepHour) {
       var live = true
       var tick = function () {
         if (!live) return
         viewOf().then(function (next) {
           if (live) keep(next)
+        })
+        // Same tick, second reader: the hour and the pool are asked together so the two halves of
+        // the state panel cannot be rehearsing different minutes while claiming to be one screen.
+        dashboardOf().then(function (hour) {
+          if (live) keepHour(hour)
         })
       }
       tick()
@@ -858,6 +885,21 @@ window.__ModuleLoader__.load({
     var PANEL_LABEL = 'DSH Multipool'
 
     /**
+     * The minute, as a person reads a clock.
+     *
+     * Fixed to Shanghai like the pts label on line three, and for the same reason docs/05 gives
+     * there: the upstream's day rolls over on Beijing midnight, so a curve printed in the machine's
+     * local zone would put the daily reset in the middle of its own hour. Only the clock of a single
+     * minute is drawn -- the day is already on the label beside it.
+     */
+    function hourLabelOf(atMs) {
+      if (typeof atMs !== 'number' || !isFinite(atMs)) return String(atMs)
+      var minutes = Math.floor(atMs / 60000)
+      var ofDay = ((minutes % 1440) + 1440) % 1440
+      return pad2(Math.floor(ofDay / 60)) + ':' + pad2(ofDay % 60)
+    }
+
+    /**
      * The main area, once the rail icon has been clicked.
      *
      * This task (B1) only promises the route: click, land, close, and nothing left over after a
@@ -873,15 +915,16 @@ window.__ModuleLoader__.load({
       const view = pair[0]
       const setView = pair[1]
 
+      // null is the panel's fourth state, and the only one it may paint as words: no host answered
+      // yet, which is not an hour in which nothing happened (docs/07 U-08).
+      const hourPair = React.useState(function () { return null })
+      const hour = hourPair[0]
+      const setHour = hourPair[1]
+
       React.useEffect(function () {
-        var live = true
         // One timer for the rail, one for the panel, both on the same interval: the badge and the
         // panel cannot disagree about the pool while both are on screen.
-        var stopFollowing = follow(setView)
-        return function () {
-          live = false
-          stopFollowing()
-        }
+        return follow(setView, setHour)
       }, [])
 
       const styles = {
@@ -904,6 +947,12 @@ window.__ModuleLoader__.load({
           whiteSpace: 'pre-wrap',
           fontVariantNumeric: 'tabular-nums',
         },
+        note: {
+          color: 'var(--dsw-alias-label-tertiary)',
+          fontSize: 12,
+          lineHeight: '18px',
+          whiteSpace: 'pre-wrap',
+        },
       }
 
       const rows = [
@@ -912,10 +961,50 @@ window.__ModuleLoader__.load({
         React.createElement('div', { key: 'points', style: styles.line, 'data-multipool-line': 'points' }, view.lines.points),
       ]
 
+      // The hour, drawn from whatever the host last folded. dashboardOf() hands back the payload
+      // itself, so the shape the panel reads here is the shape the host sent -- not a guess made in
+      // the drawer about a wire that has not been built yet.
+      //
+      // The y axis carries the 429 share, so 0 sits at the bottom and the tallest point is 100.
+      // Drawn as one polyline per unbroken run: a minute with no requests ends a run, and a line
+      // through that break is the invented floor this whole task is about (docs/07 U-08).
+      const folded = hourOf(hour)
+      const figure = folded === null || folded.measured === 0 ? null : trendFigureOf(folded.trend, hourLabelOf)
+      const stroke = levelColor(view.level)
+      const curve = figure === null
+        ? React.createElement(
+            'div',
+            { key: 'curve', style: styles.note, 'data-multipool-curve': 'none' },
+            trendNoteOf(hour !== null, folded === null ? 0 : folded.measured),
+          )
+        : React.createElement(
+            'svg',
+            {
+              key: 'curve',
+              viewBox: '0 0 ' + String(figure.width) + ' ' + String(figure.height),
+              width: '100%',
+              height: String(figure.height),
+              style: { display: 'block', overflow: 'visible' },
+              'data-multipool-curve': 'line',
+            },
+            figure.lines.map(function (points, index) {
+              return React.createElement('polyline', {
+                key: 'run-' + String(index),
+                points: points,
+                fill: 'none',
+                stroke: stroke,
+                strokeWidth: 1.5,
+                strokeLinejoin: 'round',
+                strokeLinecap: 'round',
+              })
+            }),
+          )
+
       const children = [
         React.createElement('div', { key: 'title', style: styles.title },
           'AMD \u8d26\u53f7\u6c60'),
         React.createElement('div', { key: 'rows' }, rows),
+        curve,
       ]
 
       return React.createElement(
@@ -1007,6 +1096,7 @@ window.__ModuleLoader__.load({
       sentenceOf: sentenceOf,
       whereOf: whereOf,
       dashboardOf: dashboardOf,
+      hourOf: hourOf,
     }
   },
 })

@@ -394,7 +394,7 @@ test('a blank figure is a sentence either way, and the two sentences are not the
   assert.ok(String(busyNote).includes('5'), 'the note counts what it actually measured')
 })
 
-test('the drawer asks for the hour, and a host that never answers gets no points drawn', () => {
+test('the panel paints the hour it was handed, run by run, and empties in words when it was not', () => {
   const asked = []
   const quiet = (url) => {
     asked.push(url)
@@ -410,6 +410,48 @@ test('the drawer asks for the hour, and a host that never answers gets no points
   })
 })
 
+test('a minute with no requests breaks the stroke; it is not a zero joined to its neighbours', () => {
+  // The whole point of U-08, said in the place that draws it: three minutes of which the middle one
+  // was never measured must come out as two strokes, not one stroke that dips to the floor. A reader
+  // who sees the dip cannot tell it from a minute in which the pool really was quiet.
+  const minute = 60000
+  const at = (index, rate) => ({
+    atMs: index * minute,
+    requests: rate === null ? 0 : 4,
+    err429: rate === null ? 0 : 1,
+    rate: rate === null ? null : { value: rate, source: 'assume', ref: 'local counters, 60000ms buckets' },
+    err429ByKind: {},
+  })
+  const quiet = core.trendFigureOf([at(0, '0.00'), at(1, null), at(2, '25.00')], (ms) => String(ms / minute))
+  assert.equal(quiet.lines.length, 2, 'a hole closes a run, it does not join two')
+
+  const honest = core.trendFigureOf([at(0, '0.00'), at(1, '10.00'), at(2, '25.00')], (ms) => String(ms / minute))
+  assert.equal(honest.lines.length, 1, 'minutes that were all measured are one line')
+
+  // And the note under a blank figure says which blank it is, because the box cannot (docs/07 U-08).
+  assert.notEqual(core.trendNoteOf(false, 0), core.trendNoteOf(true, 0))
+  assert.equal(core.trendNoteOf(true, 0), 'trend: nothing recorded yet')
+})
+
+test('a carried hour with no traffic in it is an empty figure, not a flat line at zero', () => {
+  // What the host sends for a quiet hour: sixty minutes, every one of them with requests 0 and
+  // rate null. Nothing in that payload says a request failed, and nothing in it may be drawn as
+  // though one succeeded at zero percent either (docs/07 U-08).
+  const quietHour = {
+    trend: Array.from({ length: 60 }, (unused, minute) => ({
+      atMs: minute * 60000,
+      requests: 0,
+      err429: 0,
+      rate: null,
+      err429ByKind: {},
+    })),
+    rows: [],
+  }
+  const folded = factory(null).hourOf(quietHour)
+  assert.equal(folded.measured, 0, 'no minute carried a rate, so none counts as measured')
+  // And the absence of a host is folded to nothing at all, never to an hour of zeroes.
+  assert.equal(factory(null).hourOf(null), null)
+})
 test('a page with no window at all is a host too old, not a save that failed', async () => {
   const plugin = factory({ __ModuleLoader__: globalThis.window.__ModuleLoader__ })
   const outcome = await plugin.commandOf({ name: 'save', key: 'rc-abc' })
